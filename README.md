@@ -44,6 +44,16 @@ Ran hydra against the Wazuh server's SSH (user analyst).
 ![SSH event detail - source IP](screenshots/EX3-event%20detail-1.png)
 ![SSH event detail - rule and MITRE](screenshots/EX3-event%20detail-2.png)
 
+### 4. Custom detection rule (my own rule)
+Wrote a custom Wazuh rule to flag new Windows user creation faster,
+treating it as a possible backdoor.
+- Rule id 100100, level 12 (high severity)
+- Triggers on Windows Event ID 4720 (a user account was created)
+- MITRE ATT&CK T1136.001 (Create Account - Local Account)
+
+![Custom rule on dashboard](screenshots/EX4-Custom-rule-dashboard.png)
+![Custom rule event detail](screenshots/EX4-Custom-rule-event-2.png)
+
 ## What I learned
 Alert triage, reading rule.id / rule.level / source IP, mapping events to
 MITRE ATT&CK, and writing a custom detection rule in Wazuh.
