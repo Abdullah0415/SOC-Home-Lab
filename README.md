@@ -17,6 +17,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: https://10.10.10.10
 ## Tools
 VMware Workstation Pro · Wazuh 4.x (SIEM/XDR) · Kali Linux (nmap, hydra)
 · Windows 11 Enterprise (Wazuh agent)
+· Sysmon (SwiftOnSecurity config)
 
 ## Detections
 
@@ -54,10 +55,48 @@ treating it as a possible backdoor.
 ![Custom rule on dashboard](screenshots/EX4-Custom-rule-dashboard.png)
 ![Custom rule event detail](screenshots/EX4-Custom-rule-event-2.png)
 
+### 5. Endpoint telemetry with Sysmon + recon detection
+Applied the SwiftOnSecurity Sysmon configuration on the Windows endpoint and
+forwarded the Sysmon log to Wazuh for process-level visibility. Then simulated
+attacker reconnaissance (`whoami`, `whoami /priv`, `ipconfig /all`, `net user`).
+
+- Sysmon Event ID 1 (process creation) collected by Wazuh
+- `net user` was caught by the built-in Wazuh rule 92031 (Discovery activity, level 3)
+- `whoami` was logged by Sysmon but produced no Wazuh alert: a detection gap
+- Closed the gap with custom rule id 100200, level 10, triggered on whoami.exe execution
+- MITRE ATT&CK T1033 (System Owner/User Discovery)
+
+```xml
+<group name="local,sysmon,windows,">
+<rule id="100200" level="10">
+<if_group>sysmon_event1</if_group>
+<field name="win.eventdata.image">whoami.exe</field>
+<description>Custom SOC rule: whoami executed - possible host reconnaissance</description>
+<mitre>
+<id>T1033</id>
+</mitre>
+</rule>
+</group>
+```
+
+**Troubleshooting:** after adding the rule, wazuh-manager failed to start
+(systemd timeout). Validated the rules with `wazuh-analysisd -t` (no errors),
+found stuck processes in the service status, cleared them with
+`wazuh-control stop`, and the manager started successfully.
+
+![Sysmon events in Wazuh](screenshots/sysmon-events.png)
+![Recon commands on the victim](screenshots/recon-commands.png)
+![Custom rule 100200 firing](screenshots/rule-100200-dashboard.png)
+![whoami event detail](screenshots/rule-100200-event.png)
+![Rule 100200 details](screenshots/rule-100200-details.png)
+
 ## What I learned
 Alert triage, reading rule.id / rule.level / source IP, mapping events to
-MITRE ATT&CK, and writing a custom detection rule in Wazuh.
+MITRE ATT&CK, investigating process creation with Sysmon (image, command line,
+parent process), finding a detection gap, and writing custom detection rules
+in Wazuh. Also troubleshooting a failing wazuh-manager service from its logs.
 
 ## Next steps
-Continuing the TryHackMe SOC Level 1 path, adding Sysmon to the Windows
-endpoint for richer telemetry, and writing more custom Wazuh rules.
+Continuing the TryHackMe SOC Level 1 path, detecting persistence techniques
+(Run keys and scheduled tasks) with Sysmon, and chaining an end-to-end attack
+from Kali to test all detections together.
