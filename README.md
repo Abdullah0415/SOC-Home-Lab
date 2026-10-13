@@ -19,6 +19,8 @@ VMware Workstation Pro · Wazuh 4.x (SIEM/XDR) · Kali Linux (nmap, hydra)
 · Windows 11 Enterprise (Wazuh agent)
 · Sysmon (SwiftOnSecurity config)
 
+[TryHackMe progress](tryhackme-progress.md)
+
 ## Detections
 
 ### 1. Windows logon brute force (Event ID 4625)
