@@ -90,13 +90,47 @@ found stuck processes in the service status, cleared them with
 ![whoami event detail](screenshots/rule-100200-event.png)
 ![Rule 100200 details](screenshots/rule-100200-details.png)
 
+### 6. Persistence detection + attack timeline
+
+Simulated two common persistence techniques on the Windows endpoint and
+wrote a custom Wazuh rule for each, using Sysmon telemetry.
+
+- **Run key:** added a fake "Updater" value under `HKCU\...\CurrentVersion\Run`
+  - Sysmon Event ID 13 (registry value set)
+  - Built-in result: rule 92302, level 6
+  - Custom rule 100300, level 12, MITRE ATT&CK T1547.001
+  - The built-in field path is backslash-escaped in Wazuh's JSON, so the
+    regex needed `CurrentVersion\\+Run` to match
+- **Scheduled task:** created a fake "WindowsUpdateCheck" task with `schtasks`
+  - Sysmon Event ID 1 (process creation)
+  - Built-in result: no alert - detection gap
+  - Custom rule 100400, level 12, MITRE ATT&CK T1053.005
+  - Two field conditions (schtasks.exe AND /create) to avoid false positives
+
+**Attack timeline:** ran a short chain (recon, new local account, Run key,
+scheduled task) and filtered Wazuh to level 10+ alerts on the victim. The
+custom rules turn the serious steps into a readable story, oldest first.
+
+**Alert triage:** investigated three unexpected built-in alerts and
+documented each verdict - two false positives (a PowerShell policy-test
+file, and a Windows compatibility-database task run by the system) and one
+true-positive activity with a mislabelled rule.
+
+![Run key rule firing](screenshots/EX6-rule-100300-dashboard.png)
+![Scheduled task rule firing](screenshots/EX6-rule-100400-dashboard.png)
+![Attack timeline](screenshots/EX7-attack-timeline.png)
+
 ## What I learned
 Alert triage, reading rule.id / rule.level / source IP, mapping events to
 MITRE ATT&CK, investigating process creation with Sysmon (image, command line,
 parent process), finding a detection gap, and writing custom detection rules
 in Wazuh. Also troubleshooting a failing wazuh-manager service from its logs.
 
+- Detecting persistence (registry Run keys, scheduled tasks), writing multi-condition rules to limit false positives, building an attack timeline, and triaging alerts (true vs false positive)
+
 ## Next steps
 Continuing the TryHackMe SOC Level 1 path, detecting persistence techniques
 (Run keys and scheduled tasks) with Sysmon, and chaining an end-to-end attack
 from Kali to test all detections together.
+
+- Run the attack chain remotely from Kali and detect lateral movement
