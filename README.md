@@ -86,11 +86,15 @@ attacker reconnaissance (`whoami`, `whoami /priv`, `ipconfig /all`, `net user`).
 found stuck processes in the service status, cleared them with
 `wazuh-control stop`, and the manager started successfully.
 
-![Sysmon events in Wazuh](screenshots/sysmon-events.png)
-![Recon commands on the victim](screenshots/recon-commands.png)
-![Custom rule 100200 firing](screenshots/rule-100200-dashboard.png)
-![whoami event detail](screenshots/rule-100200-event.png)
-![Rule 100200 details](screenshots/rule-100200-details.png)
+![Sysmon log in Event Viewer](screenshots/EX5-sysmon-eventviewer.png)
+![Sysmon events in Wazuh](screenshots/EX5-sysmon-events.png)
+![Sysmon events list](screenshots/EX5-sysmon-events-list.png)
+![Sysmon Event 1 detail](screenshots/EX5-sysmon-event1-detail.png)
+![Recon commands on the victim](screenshots/EX5-recon-commands.png)
+![net user caught by built-in rule 92031](screenshots/EX5-net-user-event.png)
+![Custom rule 100200 firing](screenshots/EX5-rule-100200-dashboard.png)
+![whoami event detail](screenshots/EX5-rule-100200-event.png)
+![Rule 100200 details](screenshots/EX5-rule-100200-details.png)
 
 ### 6. Persistence detection + attack timeline
 
@@ -122,11 +126,11 @@ true-positive activity with a mislabelled rule.
 ![Scheduled task rule firing](screenshots/EX6-rule-100400-dashboard.png)
 ![Attack timeline](screenshots/EX7-attack-timeline.png)
 
-## 7. Lateral Movement, Tool Transfer & Alert Tuning
+### 7. Lateral Movement, Tool Transfer & Alert Tuning
 
 This section covers two new attack detections from the Kali attacker, tuning out false positives found earlier, and a real troubleshooting case where alerts went missing.
 
-### 7.1 Lateral movement over SMB (T1021)
+#### 7.1 Lateral movement over SMB (T1021)
 
 **Attack:** From SOC-Kali (10.10.10.130) I used `netexec` (nxc) to authenticate to SOC-Win11 over SMB (port 445) with valid credentials for `socadmin`.
 
@@ -153,7 +157,7 @@ This section covers two new attack detections from the Kali attacker, tuning out
 ![Rule 100500 event details](screenshots/EX8-rule-100500-event.png)
 ![Source IP of the attacker](screenshots/EX8-rule-100500-ipaddress.png)
 
-### 7.2 PowerShell web download (T1105)
+#### 7.2 PowerShell web download (T1105)
 
 **Attack:** On the victim I used `Invoke-WebRequest` to download a file, simulating an attacker pulling tools onto a compromised host.
 
@@ -182,7 +186,7 @@ This section covers two new attack detections from the Kali attacker, tuning out
 ![Rule 100600 event details](screenshots/EX8-rule-100600-event-1.png)
 ![Rule 100600 event details (continued)](screenshots/EX8-rule-100600-event-2.png)
 
-### 7.3 Tuning false positives
+#### 7.3 Tuning false positives
 
 Two built-in rules kept firing on normal Windows activity:
 
@@ -230,7 +234,7 @@ The negative test matters: it proves the suppression did not create a blind spot
 ![False positives suppressed](screenshots/EX8-16-FP-suppressed-proof.png)
 ![sdbinst from PowerShell still alerts](screenshots/EX8-17-sdbinst-still-alerts.png)
 
-### 7.4 Investigation: "no alerts" does not mean "no activity"
+#### 7.4 Investigation: "no alerts" does not mean "no activity"
 
 During the negative test, the expected 92058 alert never appeared. Instead of assuming my rule was wrong, I worked through the log pipeline step by step:
 
@@ -246,7 +250,7 @@ I also found that the manager's vulnerability detection module was repeatedly cr
 
 **Key takeaway:** before trusting the absence of alerts, confirm that the logs are actually reaching the SIEM.
 
-### 7.5 Attack timeline
+#### 7.5 Attack timeline
 
 All custom detections in this lab, ordered by time. On 13 Oct, a full chain (discovery, then account creation, Run key and scheduled task persistence) was detected within about four minutes.
 
