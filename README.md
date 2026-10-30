@@ -266,6 +266,55 @@ All custom detections in this lab, ordered by time. On 13 Oct, a full chain (dis
 ![MITRE ATT&CK overview](screenshots/EX8-18-mitre-overview.png)
 ![Attack timeline](screenshots/EX8-19-attack-timeline.png)
 
+## 8. Linux SSH Brute Force & Successful Login Detection 
+
+**Scenario:** An attacker on Kali (10.10.10.130) brute-forced SSH on the Ubuntu 26.04 Wazuh server, logged in with the cracked password, and tried to escalate to root. A lab-only user (`testuser`) was used so no real credentials appear anywhere.
+
+**Attack timeline (UTC):**
+- 15:35:04–15:35:11 – hydra tried 16 passwords from 4 parallel source ports
+- 15:35:12 – password cracked
+- 15:36:42 – attacker logged in over SSH; ran `whoami`, `id`, `hostname`, `sudo -l`
+
+![Hydra success](screenshots/EX9-03-hydra-success.png)
+
+**Detections:**
+
+| Rule | Level | Detects | MITRE |
+|---|---|---|---|
+| 5902 / 5901 | 8 | New user / group created | T1136 |
+| 5760 / 5503 | 5 | Failed SSH password | T1110.001 |
+| 5763 / 2502 | 10 | SSH brute force | T1110 |
+| 40112 | 12 | Failures followed by a success | T1078, T1110 |
+| **100800 (custom)** | **14** | **SSH brute force that SUCCEEDED** | **T1110.001, T1078** |
+
+![Wazuh SSH brute force events](screenshots/EX9-05-wazuh-ssh-bruteforce-events.png)
+
+**Custom rule 100800:** child of built-in rule 40112, matches `Accepted password`, raises the alert to level 14. The first version used `<match>sshd</match>` and never fired: Wazuh's predecoder moves the program name (`sshd-session`) into its own field, and `<match>` only checks the remaining message. Fixed and re-tested.
+
+```xml
+<rule id="100800" level="14">
+  <if_sid>40112</if_sid>
+  <match>Accepted password</match>
+  <description>SSH brute force SUCCEEDED: $(dstuser) logged in from $(srcip) after multiple failures</description>
+  <mitre>
+    <id>T1110.001</id>
+    <id>T1078</id>
+  </mitre>
+</rule>
+```
+
+![Rule 100800 MITRE details](screenshots/EX9-09-rule-100800-mitre.png)
+
+**Findings:**
+- **Visibility gap:** sudo-rs on Ubuntu 26.04 did not log denied `sudo` attempts by a non-sudoer, so no alert was possible. Planned fix: auditd.
+- A later login with the stolen password (no failures first) produced only a level 3 alert: stolen credentials look like normal logins.
+- Dashboard DQL `agent.id:000` returns nothing (parsed as a number); `agent.name:soc-wazuh` works.
+- Server logs are UTC, the dashboard shows local time (UTC+2); timelines must state the timezone.
+
+![sudo visibility gap](screenshots/EX9-10-sudo-visibility-gap.png)
+
+All screenshots for this exercise: `screenshots/EX9-*`
+
 ## What I learned
 Alert triage, reading rule.id / rule.level / source IP, mapping events to
 MITRE ATT&CK, investigating process creation with Sysmon (image, command line,
@@ -274,6 +323,8 @@ in Wazuh. Also troubleshooting a failing wazuh-manager service from its logs.
 
 - Detecting persistence (registry Run keys, scheduled tasks), writing multi-condition rules to limit false positives, building an attack timeline, and triaging alerts (true vs false positive)
 - Detecting lateral movement and tool transfer, tuning false positives with narrow suppression rules and negative tests, and troubleshooting a broken log pipeline ("no alerts" is not "no activity")
+- Detecting SSH brute force that ends in a successful login with a correlation rule, reading Linux logs (auth.log, journald), and finding a visibility gap (denied sudo attempts were not logged on Ubuntu 26.04)
 
 ## Next steps
-Continuing the TryHackMe SOC Level 1 path, investigating the remaining unexplained alerts, and adding detections for new attack techniques.
+- Enable auditd to capture sudo execution on Linux
+- Next exercise: File Integrity Monitoring (FIM)
