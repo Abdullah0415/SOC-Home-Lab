@@ -11,10 +11,10 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 **At a glance**
-- **10 exercises**, from brute-force detection to file integrity monitoring
-- **9 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
-- **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1105, T1110.001, T1078, T1565.001
-- **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, attack timelines, log-pipeline troubleshooting
+- **11 exercises**, from brute-force detection to defense evasion
+- **10 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
+- **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1105, T1110.001, T1078, T1565.001, T1070.001
+- **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting
 
 [TryHackMe progress](tryhackme-progress.md)
 
@@ -32,6 +32,7 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 - [Exercise 8: Lateral Movement, Tool Transfer and Alert Tuning](#exercise-8-lateral-movement-tool-transfer-and-alert-tuning)
 - [Exercise 9: Linux SSH Brute Force and Successful Login](#exercise-9-linux-ssh-brute-force-and-successful-login)
 - [Exercise 10: File Integrity Monitoring and Startup Persistence](#exercise-10-file-integrity-monitoring-and-startup-persistence)
+- [Exercise 11: Defense Evasion and Endpoint Health](#exercise-11-defense-evasion-and-endpoint-health)
 - [What I learned](#what-i-learned)
 - [Next steps](#next-steps)
 
@@ -62,6 +63,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`
 | 100800 | 9 | SSH brute force that succeeded | T1110.001, T1078 | 14 |
 | 100900 | 10 | Sensitive Finance file modified or deleted | T1565.001 Stored Data Manipulation | 10 |
 | 100910 | 10 | File added to a Windows Startup folder | T1547.001 Run Keys / Startup Folder | 12 |
+| 100930 | 11 | Windows event log cleared | T1070.001 Clear Windows Event Logs | 12 |
 
 Screenshots for every exercise are in [`screenshots/`](screenshots/), one folder per exercise. Click any image to open it full size.
 
@@ -429,8 +431,8 @@ Two built-in rules kept firing on normal Windows activity:
 
 | Test | Expected | Result |
 |---|---|---|
-| Opened PowerShell several times | No 92213 alerts | 14 `__PSScriptPolicyTest` events reached the manager, **0 alerts** ✅ |
-| Ran `sdbinst.exe -m -bg` from an admin PowerShell (negative test) | 92058 still alerts | **92058 fired at level 12** ✅ |
+| Opened PowerShell several times | No 92213 alerts | 14 `__PSScriptPolicyTest` events reached the manager, **0 alerts** |
+| Ran `sdbinst.exe -m -bg` from an admin PowerShell (negative test) | 92058 still alerts | **92058 fired at level 12** |
 
 The negative test matters: it proves the suppression did not create a blind spot.
 
@@ -686,20 +688,129 @@ Both rules fired with the full file path in the description. The Startup alert n
 
 ---
 
+## Exercise 11: Defense Evasion and Endpoint Health
+
+**Goal:** detect the moves an attacker makes to blind the SOC after gaining access, clearing the event logs, stopping security tools, and crashing or powering off the endpoint, and decide for each whether a custom rule is actually warranted.
+
+**Method:** before writing any rule I verified the log pipeline with archives (`logall_json`), so I could tell "the event never reached the manager" apart from "the event arrived but no rule matched". Where the built-in coverage was already adequate or the data never arrived, I documented that instead of adding a rule, so every rule I ship corresponds to data that really reaches the SIEM.
+
+### 11.1 Event log clearing (T1070.001)
+
+**Attack:** cleared the Security log (`wevtutil cl Security`) and the Sysmon log, which Windows itself records.
+
+| Cleared | Event | Built-in rule | Level | MITRE |
+|---|---|---|---|---|
+| Security log | 1102 | 63103 "The audit log was cleared" | 5 | T1070 |
+| Sysmon log | 104 | 63104 "A Windows log file was cleared" | 5 | T1070 |
+
+**Gap:** both fired but only at **level 5**, and mapped to the parent technique T1070, not the sub-technique. The account that cleared the log (`socadmin`) was visible in the alert.
+
+**Custom rule 100930:** child of 63103 / 63104, raises both to level 12 and maps them to T1070.001.
+
+```xml
+<group name="local,windows,defense_evasion,">
+  <rule id="100930" level="12">
+    <if_sid>63103,63104</if_sid>
+    <field name="win.system.eventID">^1102$|^104$</field>
+    <description>Windows event log cleared ($(win.system.channel)) - attacker clearing tracks (Event $(win.system.eventID))</description>
+    <mitre>
+      <id>T1070.001</id>
+    </mitre>
+  </rule>
+</group>
+```
+
+**Result:** both log-clear events fired rule 100930 at level 12, shown in the MITRE view as "Clear Windows Event Logs".
+
+### 11.2 Stopping Sysmon (T1562.001), a positive finding
+
+I tried to stop the Sysmon service four ways: `Stop-Service`, `sc.exe stop`, `Stop-Process -Force`, and PsExec running as SYSTEM. **All were denied.** Sysmon64 is a self-protected service that cannot be stopped from Administrator or even SYSTEM; an attacker would have to use Sysmon's own `-u` unload or a config reload. I documented this as a positive finding (endpoint telemetry cannot be trivially killed) rather than forcing it, and did not write the planned Sysmon-stop rule, because the "service stopped" event never occurred.
+
+### 11.3 Stopping the Wazuh agent (T1562.001)
+
+Stopping the agent is the most dangerous move: with the agent down, the SOC is blind to that endpoint.
+
+- Built-in rule **506 "Wazuh agent stopped"** fired, with the correct MITRE mapping (T1562.001), but only at **level 3**. Gap: the severity is far too low for an event that blinds the SOC. A tuned child of rule 506 (level 12) is a planned follow-up.
+- **Second finding:** a System event written *while the agent was stopped* never reached the manager, and was not recovered after the agent restarted. The agent does not replay Windows EventChannel events it missed while down, so anything that happens during an agent outage is a permanent blind spot.
+
+### 11.4 Unexpected shutdown and crash (T1529), a visibility gap
+
+During this exercise the Windows 11 VM crashed twice (the recurring 0x124 WHEA bugcheck) and was hard-powered-off once. Windows logged the expected System events: **41 (Kernel-Power)** and **6008 (unexpected shutdown)**.
+
+But Wazuh showed **0 alerts**, and the archives contained **no 41/6008 events at all**, even though the pipeline was confirmed live at the same moment (a test event written seconds earlier did reach the archives). The reason: these events are written just before shutdown or at the next boot, while the agent is down, and the agent never recovers them, the same behaviour as the missed event in 11.3.
+
+**Decision:** I did **not** write the planned crash-detection rules. Writing a rule for data that never reaches the manager would be theatre, not detection. Instead this is documented as a **visibility gap**, with possible future fixes: agent-side bookmark persistence, or host/hypervisor-level monitoring that does not depend on the guest's own agent.
+
+**Pipeline lesson (a repeat of Exercise 8):** after a crash the agent showed as "Active" but sent no EventChannel logs; the archive held only SCA and rootcheck data. `Stop-Service` timed out but did stop the service, and `Start-Service` restored the log flow. "Active" is not enough, I verify that real events are actually arriving. On this slow HDD VM the reliable restart is always `wazuh-control stop` (removing a leftover `start-script-lock` directory if present) followed by `systemctl start`, never `restart`.
+
+**Rules shipped this exercise:** 100930 only. The crash and Sysmon-stop rules were deliberately not written, for the reasons above, an honest scope where every rule maps to data that reaches the SIEM.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-05%281102%29.png"><img src="screenshots/Exercise-11/EX11-05%281102%29.png" width="400" alt="Security log cleared: built-in 63103, level 5"></a><br><sub>Security log cleared: built-in 63103, level 5</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-14.png"><img src="screenshots/Exercise-11/EX11-14.png" width="400" alt="Rule 100930: level 12, Clear Windows Event Logs"></a><br><sub>Rule 100930: level 12, Clear Windows Event Logs</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-09.png"><img src="screenshots/Exercise-11/EX11-09.png" width="400" alt="Agent stopped: built-in 506, level 3"></a><br><sub>Agent stopped: built-in 506, level 3</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-12.png"><img src="screenshots/Exercise-11/EX11-12.png" width="400" alt="Crash/shutdown: 0 alerts (visibility gap)"></a><br><sub>Crash/shutdown: 0 alerts (visibility gap)</sub></td>
+  </tr>
+</table>
+<details>
+<summary><b>More screenshots</b> (14)</summary>
+<br>
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-02.png"><img src="screenshots/Exercise-11/EX11-02.png" width="400" alt="Agent log channels (no System query)"></a><br><sub>Agent log channels (no System query)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-03.png"><img src="screenshots/Exercise-11/EX11-03.png" width="400" alt="Test event reaches archives (pipeline check)"></a><br><sub>Test event reaches archives (pipeline check)</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-04.png"><img src="screenshots/Exercise-11/EX11-04.png" width="400" alt="wevtutil log-clear commands"></a><br><sub>wevtutil log-clear commands</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-06%28104%29.png"><img src="screenshots/Exercise-11/EX11-06%28104%29.png" width="400" alt="Sysmon log cleared: built-in 63104, level 5"></a><br><sub>Sysmon log cleared: built-in 63104, level 5</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-07.png"><img src="screenshots/Exercise-11/EX11-07.png" width="400" alt="Sysmon stop denied, even as SYSTEM"></a><br><sub>Sysmon stop denied, even as SYSTEM</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-10.png"><img src="screenshots/Exercise-11/EX11-10.png" width="400" alt="Event written while agent stopped"></a><br><sub>Event written while agent stopped</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-10b.png"><img src="screenshots/Exercise-11/EX11-10b.png" width="400" alt="That event never recovered (blind spot)"></a><br><sub>That event never recovered (blind spot)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-11.png"><img src="screenshots/Exercise-11/EX11-11.png" width="400" alt="Windows logged crash events 41 and 6008"></a><br><sub>Windows logged crash events 41 and 6008</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-13.png"><img src="screenshots/Exercise-11/EX11-13.png" width="400" alt="Crash events never reached the archives"></a><br><sub>Crash events never reached the archives</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-15.png"><img src="screenshots/Exercise-11/EX11-15.png" width="400" alt="Rule 100930 events: both log clears, level 12"></a><br><sub>Rule 100930 events: both log clears, level 12</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-16%20%28cleanup%20proof%29.png"><img src="screenshots/Exercise-11/EX11-16%20%28cleanup%20proof%29.png" width="400" alt="Cleanup: tools running, PsExec removed"></a><br><sub>Cleanup: tools running, PsExec removed</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-01.png"><img src="screenshots/Exercise-11/EX11-01.png" width="400" alt="Crash watch at lab start"></a><br><sub>Crash watch at lab start</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-03a.png"><img src="screenshots/Exercise-11/EX11-03a.png" width="400" alt="Test event created on the endpoint"></a><br><sub>Test event created on the endpoint</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-11/EX11-TS-02.png"><img src="screenshots/Exercise-11/EX11-TS-02.png" width="400" alt="Pipeline stall after crash: archives missing EventChannel"></a><br><sub>Pipeline stall after crash: archives missing EventChannel</sub></td>
+  </tr>
+</table>
+
+</details>
+
+---
+
 ## What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
 - **Endpoint telemetry:** investigating process creation, registry and file events with Sysmon (image, command line, parent process)
 - **Detection engineering:** finding detection gaps and closing them with custom Wazuh rules, including correlation rules and multi-condition rules that limit false positives
+- **Knowing when NOT to write a rule:** distinguishing a rule gap (event arrives, no rule matches) from a visibility gap (event never reaches the SIEM), and documenting the gap instead of shipping a rule that can never fire
 - **Rule internals:** Wazuh evaluates rules as a tree (`if_sid` vs `if_group`), the predecoder changes what `<match>` sees, and dashboard field names differ from rule field names
 - **Tuning:** narrow level 0 suppression rules backed by negative tests, so tuning never creates blind spots
-- **Attack coverage:** persistence (Run keys, scheduled tasks, Startup folder), lateral movement, tool transfer, SSH brute force and file tampering
+- **Attack coverage:** persistence (Run keys, scheduled tasks, Startup folder), lateral movement, tool transfer, SSH brute force, file tampering, and defense evasion (log clearing, disabling tools)
 - **File integrity monitoring:** whodata answers who, what, when and how in a single alert; context (which folder, which file) decides whether a change is noise or an attack
+- **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
 
 ## Next steps
 
-- Custom rule for unexpected endpoint shutdowns and bugchecks (Event IDs 41, 6008, 1001 in the System log)
+- Tune a child of rule 506 to raise "Wazuh agent stopped" to high severity
+- Close the crash/shutdown visibility gap with agent-side bookmark persistence or host/hypervisor-level monitoring
 - Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
 - Enable auditd to capture sudo execution on Linux
 - Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab
