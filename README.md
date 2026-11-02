@@ -11,10 +11,10 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 **At a glance**
-- **11 exercises**, from brute-force detection to defense evasion
+- **12 exercises**, from brute-force detection to defense evasion and crash root-cause analysis
 - **10 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
 - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1105, T1110.001, T1078, T1565.001, T1070.001
-- **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting
+- **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg)
 
 [TryHackMe progress](tryhackme-progress.md)
 
@@ -33,6 +33,7 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 - [Exercise 9: Linux SSH Brute Force and Successful Login](#exercise-9-linux-ssh-brute-force-and-successful-login)
 - [Exercise 10: File Integrity Monitoring and Startup Persistence](#exercise-10-file-integrity-monitoring-and-startup-persistence)
 - [Exercise 11: Defense Evasion and Endpoint Health](#exercise-11-defense-evasion-and-endpoint-health)
+- [Exercise 12: Endpoint Stability Troubleshooting](#exercise-12-endpoint-stability-troubleshooting-0x124-whea-crash)
 - [What I learned](#what-i-learned)
 - [Next steps](#next-steps)
 
@@ -794,6 +795,115 @@ But Wazuh showed **0 alerts**, and the archives contained **no 41/6008 events at
 
 ---
 
+## Exercise 12: Endpoint Stability Troubleshooting (0x124 WHEA Crash)
+
+**Problem:** The Windows 11 endpoint kept crashing with bugcheck `0x124` (WHEA_UNCORRECTABLE_ERROR). Every crash stopped the Wazuh agent and interrupted detection work, and Exercise 11 showed that events from a crashed endpoint never reach the SIEM. A stable endpoint is a prerequisite for detection.
+
+**Approach:** Change one variable at a time, test each hypothesis with a repeatable test, and record every result in a crash log.
+
+### 1. Ruling out the obvious suspect: heat
+
+The host fan spiked before each crash, so CPU heat was the first hypothesis. With HWiNFO64 on the host, I ran CPU stress tests inside the VM with no settings changed:
+
+| Test | Conditions | Max CPU temp | Crash |
+|---|---|---|---|
+| 1 | Endpoint only, 5 min | 102 °C | No |
+| 2 | Endpoint + Wazuh, 5 min | 100 °C | No |
+| 3 | Endpoint + Wazuh, 45 min | 100 °C | No |
+
+About 55 minutes at the CPU's thermal limit, host WHEA errors 0, and no crash. **Heat alone did not reproduce the fault**, so it was not the root cause.
+
+### 2. Building a crash timeline from the Event Log
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='System'; Id=41,1001,6005,6008; StartTime='2026-11-01'} |
+  Sort-Object TimeCreated | Format-Table TimeCreated, Id, ProviderName -AutoSize
+```
+
+Event 6005 (boot), 41 (Kernel-Power), 6008 (unexpected shutdown) and 1001 (BugCheck `0x124`, parameter 1 = `0x10`, dump saved) gave two crashes on one day, roughly 20 and 40 minutes after boot.
+
+### 3. Root cause from the crash dump (WinDbg)
+
+`!analyze -v` on `MEMORY.DMP`:
+
+- **Arg1 = `0x10`: Device Driver Error.** The error was reported by a driver, not by a CPU machine check.
+- The crash stack, read bottom to top:
+
+```
+storport!RaidHierarchicalResetWorkRoutine     <- disk stopped responding, reset started
+stornvme!NVMeHwResetBus / NVMeControllerReset  <- virtual NVMe controller reset
+storport!StorpMarkDeviceFailed                 <- reset failed, device marked failed
+storport!StorpWheaReportError
+nt!WheaReportFatalHwErrorDeviceDriverEx        <- reported as a fatal hardware error
+nt!KeBugCheckEx                                <- 0x124
+```
+
+The `GenuineIntel.sys` failure bucket is a misleading default label; the real actor is the NVMe storage driver.
+
+**Confirmation:** the System log showed `stornvme` **Event 129** (reset to device) on three separate days before the crashes, so the virtual disk had been timing out repeatedly.
+
+**Root cause:** the endpoint's virtual disk used a virtual NVMe controller and its files sat on the host's slow HDD. Under load, disk I/O stalled long enough for Windows to reset the controller; when the reset failed, the driver raised a fatal WHEA error. This also explains why the CPU stress tests never crashed it: they did not touch the disk. The Wazuh server VM, on the same HDD but with a SATA virtual disk, never crashed.
+
+### 4. Fix (one change only)
+
+Moved only the endpoint VM from the HDD to the host SSD (`robocopy`, 130 files / 86 GB, 0 failed) and re-registered it in VMware with *I Moved It*, so its identity, IP and Wazuh agent stayed the same. No other VM setting was changed, so the disk is the only variable.
+
+### 5. Validation
+
+With Wazuh running, a 30-minute write-through disk test wrote about **574 GB** (2295 × 256 MB):
+
+- No crash, host WHEA errors 0
+- **0 `stornvme` Event 129** since boot
+
+The fix will keep being monitored over the next lab sessions before the old HDD copy is removed.
+
+### Screenshots
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png"><img src="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png" width="400" alt="45-minute CPU stress at 100 °C, no crash"></a><br><sub>45-minute CPU stress at 100 °C, no crash</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-08-windbg-analyze-device-driver-error.png"><img src="screenshots/Exercise-12/EX12-08-windbg-analyze-device-driver-error.png" width="400" alt="WinDbg: Arg1 0x10, Device Driver Error"></a><br><sub>WinDbg: Arg1 0x10, Device Driver Error</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-09-windbg-stack-stornvme.png"><img src="screenshots/Exercise-12/EX12-09-windbg-stack-stornvme.png" width="400" alt="Crash stack: stornvme reset, WHEA fatal, 0x124"></a><br><sub>Crash stack: stornvme reset, WHEA fatal, 0x124</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-11-eventlog-stornvme-129-resets.png"><img src="screenshots/Exercise-12/EX12-11-eventlog-stornvme-129-resets.png" width="400" alt="stornvme Event 129 disk resets before the fix"></a><br><sub>stornvme Event 129 disk resets before the fix</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-15-disk-test-30min-ssd-no-crash.png"><img src="screenshots/Exercise-12/EX12-15-disk-test-30min-ssd-no-crash.png" width="400" alt="After the fix: 30-minute disk test, no crash"></a><br><sub>After the fix: 30-minute disk test, no crash</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-16-event129-zero-after-ssd.png"><img src="screenshots/Exercise-12/EX12-16-event129-zero-after-ssd.png" width="400" alt="After the fix: 0 disk resets since boot"></a><br><sub>After the fix: 0 disk resets since boot</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-01-boot-101C.png"><img src="screenshots/Exercise-12/EX12-01-boot-101C.png" width="400" alt="Boot temperature, host WHEA 0"></a><br><sub>Boot temperature, host WHEA 0</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-02-stress1-no-crash.png"><img src="screenshots/Exercise-12/EX12-02-stress1-no-crash.png" width="400" alt="Stress test 1, no crash"></a><br><sub>Stress test 1, no crash</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-03-stress2-wazuh-on-no-crash.png"><img src="screenshots/Exercise-12/EX12-03-stress2-wazuh-on-no-crash.png" width="400" alt="Stress test 2 with Wazuh, no crash"></a><br><sub>Stress test 2 with Wazuh, no crash</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-04-crash-timeline-eventlog.png"><img src="screenshots/Exercise-12/EX12-04-crash-timeline-eventlog.png" width="400" alt="Crash timeline from the Event Log"></a><br><sub>Crash timeline from the Event Log</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-05-bugcheck-0x124-details.png"><img src="screenshots/Exercise-12/EX12-05-bugcheck-0x124-details.png" width="400" alt="BugCheck 0x124 details"></a><br><sub>BugCheck 0x124 details</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-07-windbg-dump-loaded-uptime-20min.png"><img src="screenshots/Exercise-12/EX12-07-windbg-dump-loaded-uptime-20min.png" width="400" alt="Dump loaded, uptime 20 minutes"></a><br><sub>Dump loaded, uptime 20 minutes</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-10-windbg-failure-bucket.png"><img src="screenshots/Exercise-12/EX12-10-windbg-failure-bucket.png" width="400" alt="Failure bucket"></a><br><sub>Failure bucket</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-12-before-move-nvme-on-hdd.png"><img src="screenshots/Exercise-12/EX12-12-before-move-nvme-on-hdd.png" width="400" alt="Before: NVMe disk on HDD"></a><br><sub>Before: NVMe disk on HDD</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-13-robocopy-to-ssd.png"><img src="screenshots/Exercise-12/EX12-13-robocopy-to-ssd.png" width="400" alt="robocopy to SSD, 0 failed"></a><br><sub>robocopy to SSD, 0 failed</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-14-after-move-vm-on-ssd.png"><img src="screenshots/Exercise-12/EX12-14-after-move-vm-on-ssd.png" width="400" alt="After: VM on SSD"></a><br><sub>After: VM on SSD</sub></td>
+  </tr>
+</table>
+
+</details>
+
+---
+
 ## What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
@@ -806,6 +916,7 @@ But Wazuh showed **0 alerts**, and the archives contained **no 41/6008 events at
 - **File integrity monitoring:** whodata answers who, what, when and how in a single alert; context (which folder, which file) decides whether a change is noise or an attack
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
+- **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
 
 ## Next steps
 
