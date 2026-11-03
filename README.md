@@ -1,27 +1,42 @@
-# SOC Home Lab: Detection Engineering with Wazuh
+<div align="center">
 
-![Wazuh](https://img.shields.io/badge/SIEM-Wazuh%204.x-blue)
-![Sysmon](https://img.shields.io/badge/Telemetry-Sysmon-informational)
-![MITRE ATT&CK](https://img.shields.io/badge/Framework-MITRE%20ATT%26CK-red)
-![Kali Linux](https://img.shields.io/badge/Attacker-Kali%20Linux-557C94)
-![VMware](https://img.shields.io/badge/Lab-VMware%20Workstation-607078)
+# 🛡️ SOC Home Lab
+### Detection Engineering with Wazuh · Mapped to MITRE ATT&CK
+
+*Simulating real attacker techniques, investigating the logs, closing the detection gaps with custom rules, and documenting the evidence — one exercise at a time.*
+
+<br>
+
+![Wazuh](https://img.shields.io/badge/SIEM-Wazuh%204.x-0E7490?style=for-the-badge&logo=wazuh&logoColor=white)
+![Sysmon](https://img.shields.io/badge/Telemetry-Sysmon-5C6BC0?style=for-the-badge)
+![MITRE ATT&CK](https://img.shields.io/badge/Framework-MITRE%20ATT%26CK-C62828?style=for-the-badge)
+![Kali Linux](https://img.shields.io/badge/Attacker-Kali%20Linux-557C94?style=for-the-badge&logo=kalilinux&logoColor=white)
+![VMware](https://img.shields.io/badge/Lab-VMware-607078?style=for-the-badge&logo=vmware&logoColor=white)
+
+<br>
+
+**[📊 Detection Summary](#-detection-summary)** &nbsp;·&nbsp; **[🧪 Exercises](#-contents)** &nbsp;·&nbsp; **[🎓 What I Learned](#-what-i-learned)** &nbsp;·&nbsp; **[🚀 Next Steps](#-next-steps)**
+
+</div>
+
+---
 
 ## Overview
 
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
-**At a glance**
-- **12 exercises**, from brute-force detection to defense evasion and crash root-cause analysis
-- **10 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
-- **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1105, T1110.001, T1078, T1565.001, T1070.001
-- **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg)
+> **At a glance**
+> - **13 exercises**, from brute-force detection to defense evasion and crash root-cause analysis
+> - **12 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
+> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001
+> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg)
 
 [TryHackMe progress](tryhackme-progress.md)
 
-## Contents
+## 📑 Contents
 
-- [Lab architecture](#lab-architecture)
-- [Detection summary](#detection-summary)
+- [Lab architecture](#-lab-architecture)
+- [Detection summary](#-detection-summary)
 - [Exercise 1: Windows Logon Brute Force](#exercise-1-windows-logon-brute-force)
 - [Exercise 2: New Admin Account and Privilege Escalation](#exercise-2-new-admin-account-and-privilege-escalation)
 - [Exercise 3: SSH Brute Force from Kali](#exercise-3-ssh-brute-force-from-kali)
@@ -34,10 +49,11 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 - [Exercise 10: File Integrity Monitoring and Startup Persistence](#exercise-10-file-integrity-monitoring-and-startup-persistence)
 - [Exercise 11: Defense Evasion and Endpoint Health](#exercise-11-defense-evasion-and-endpoint-health)
 - [Exercise 12: Endpoint Stability Troubleshooting](#exercise-12-endpoint-stability-troubleshooting-0x124-whea-crash)
-- [What I learned](#what-i-learned)
-- [Next steps](#next-steps)
+- [Exercise 13: RDP Brute Force and Successful Remote Logon](#exercise-13-rdp-brute-force-and-successful-remote-logon)
+- [What I learned](#-what-i-learned)
+- [Next steps](#-next-steps)
 
-## Lab architecture
+## 🖥️ Lab architecture
 
 | Role | Machine | IP / detail |
 |---|---|---|
@@ -49,7 +65,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`
 
 **Tools:** VMware Workstation Pro, Wazuh 4.x (SIEM/XDR), Sysmon (SwiftOnSecurity config), Kali Linux (nmap, hydra, netexec), PowerShell, Git
 
-## Detection summary
+## 📊 Detection summary
 
 | Rule | Exercise | Detects | MITRE ATT&CK | Level |
 |---|---|---|---|---|
@@ -65,6 +81,8 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`
 | 100900 | 10 | Sensitive Finance file modified or deleted | T1565.001 Stored Data Manipulation | 10 |
 | 100910 | 10 | File added to a Windows Startup folder | T1547.001 Run Keys / Startup Folder | 12 |
 | 100930 | 11 | Windows event log cleared | T1070.001 Clear Windows Event Logs | 12 |
+| 101000 | 13 | RDP remote interactive logon (type 10) | T1021.001 Remote Desktop Protocol | 6 |
+| 101010 | 13 | RDP brute force that succeeded | T1110.001, T1021.001, T1078 | 14 |
 
 Screenshots for every exercise are in [`screenshots/`](screenshots/), one folder per exercise. Click any image to open it full size.
 
@@ -474,7 +492,7 @@ I also found that the vulnerability detection module was repeatedly crashing `wa
 
 ### 8.5 Attack timeline
 
-On 13 Oct, a full chain (discovery, then account creation, Run key and scheduled task persistence) was detected within about four minutes. Together with this exercise, six custom rules covered six MITRE techniques (see the [detection summary](#detection-summary)).
+On 13 Oct, a full chain (discovery, then account creation, Run key and scheduled task persistence) was detected within about four minutes. Together with this exercise, six custom rules covered six MITRE techniques (see the [detection summary](#-detection-summary)).
 
 <table>
   <tr>
@@ -807,9 +825,9 @@ The host fan spiked before each crash, so CPU heat was the first hypothesis. Wit
 
 | Test | Conditions | Max CPU temp | Crash |
 |---|---|---|---|
-| 1 | Endpoint only, 5 min | 102 °C | No |
-| 2 | Endpoint + Wazuh, 5 min | 100 °C | No |
-| 3 | Endpoint + Wazuh, 45 min | 100 °C | No |
+| 1 | Endpoint only, 5 min | 102 C | No |
+| 2 | Endpoint + Wazuh, 5 min | 100 C | No |
+| 3 | Endpoint + Wazuh, 45 min | 100 C | No |
 
 About 55 minutes at the CPU's thermal limit, host WHEA errors 0, and no crash. **Heat alone did not reproduce the fault**, so it was not the root cause.
 
@@ -850,7 +868,7 @@ Moved only the endpoint VM from the HDD to the host SSD (`robocopy`, 130 files /
 
 ### 5. Validation
 
-With Wazuh running, a 30-minute write-through disk test wrote about **574 GB** (2295 × 256 MB):
+With Wazuh running, a 30-minute write-through disk test wrote about **574 GB** (2295 blocks of 256 MB):
 
 - No crash, host WHEA errors 0
 - **0 `stornvme` Event 129** since boot
@@ -861,7 +879,7 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 
 <table>
   <tr>
-    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png"><img src="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png" width="400" alt="45-minute CPU stress at 100 °C, no crash"></a><br><sub>45-minute CPU stress at 100 °C, no crash</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png"><img src="screenshots/Exercise-12/EX12-06-stress3-45min-no-crash.png" width="400" alt="45-minute CPU stress, no crash"></a><br><sub>45-minute CPU stress, no crash</sub></td>
     <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-12/EX12-08-windbg-analyze-device-driver-error.png"><img src="screenshots/Exercise-12/EX12-08-windbg-analyze-device-driver-error.png" width="400" alt="WinDbg: Arg1 0x10, Device Driver Error"></a><br><sub>WinDbg: Arg1 0x10, Device Driver Error</sub></td>
   </tr>
   <tr>
@@ -904,7 +922,112 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 
 ---
 
-## What I learned
+## Exercise 13: RDP Brute Force and Successful Remote Logon
+
+**Scenario:** an attacker on Kali (10.10.10.130) brute-forced RDP on the Windows 11 endpoint, logged in with the cracked password to open a real remote desktop, then signed out. A lab-only user (`rdptest`) was used so no real credentials appear anywhere. This is the Windows/RDP counterpart to the Linux SSH detection in Exercise 9.
+
+**Why it matters:** RDP is one of the most attacked services on the internet and a favourite entry point for ransomware. Failed logons are just noise; the alert that matters is the moment a brute force *succeeds* and the attacker is inside.
+
+**Attack:**
+- Recon: `nmap -p 3389` confirmed `3389/tcp open ms-wbt-server` (with NLA enabled).
+- Brute force: `nxc rdp` with a short wordlist (8 wrong + 1 correct, kept under the 10-attempt lockout) cracked `rdptest:Summer2026!`.
+- Login: `xfreerdp3` opened a real RDP desktop as `rdptest`; `whoami` confirmed the session.
+
+**Investigation (confirmed every rule ID on the dashboard, no guessing):**
+
+| Event | Meaning | Built-in rule | Level | MITRE |
+|---|---|---|---|---|
+| 4625, logon type 3 | Failed logon (NLA checks the password at network level *before* the desktop opens, so failures show as type 3, not 10) | 60122 | 5 | T1110.001 |
+| Multiple 4625 | Brute-force correlation | 60204 | 10 | T1110 |
+| 4624, logon type 10 | Successful RemoteInteractive (real RDP desktop) | 92653 | 3 | T1021.001 |
+
+**Detection gap:** the same IP produced 8 failures and then a successful RDP login, but that success was only a **level 3** alert (92653), easy to miss in a busy SOC. Unlike SSH (which has built-in rule 40112 for "failures then success"), Windows RDP had no high-severity "brute force succeeded" alert.
+
+**Custom rules:**
+
+```xml
+<group name="local,windows,authentication,">
+
+  <rule id="101000" level="6">
+    <if_sid>92653</if_sid>
+    <field name="win.eventdata.logonType">^10$</field>
+    <description>RDP remote interactive logon: $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <mitre>
+      <id>T1021.001</id>
+    </mitre>
+  </rule>
+
+  <rule id="101010" level="14" timeframe="300">
+    <if_sid>101000</if_sid>
+    <if_matched_sid>60204</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <description>RDP brute force succeeded: $(win.eventdata.targetUserName) logged in from $(win.eventdata.ipAddress) after repeated failed logons</description>
+    <mitre>
+      <id>T1110.001</id>
+      <id>T1021.001</id>
+      <id>T1078</id>
+    </mitre>
+    <group>authentication_success,</group>
+  </rule>
+
+</group>
+```
+
+**Logic:** rule 101000 labels every RDP desktop logon (type 10). Rule 101010 fires only when a type-10 logon comes from the **same source IP** that triggered the multiple-failures alert (60204) in the previous 5 minutes, raising it to **level 14**.
+
+**Result:** on re-test, rule 101010 fired at level 14 from 10.10.10.130, mapped to T1110.001, T1021.001 and T1078. Only 101010 shows, because the correlation rule consumes the 101000 alert into itself; its presence proves 101000 fired too.
+
+**Lessons:**
+- The guide's assumed rule ID for the RDP success (60106) was **wrong**; confirming it on the dashboard gave the real one, **92653**. Always verify IDs against live events before writing a rule.
+- Rule field names use `win.eventdata.*`, not the dashboard's `data.win.eventdata.*` form.
+- On this slow-HDD Wazuh VM, `systemctl start wazuh-manager` silently fails; `sudo /var/ossec/bin/wazuh-control start` reliably brings all daemons up (after removing a leftover `start-script-lock` if present).
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-11-rule-101010-fired.png"><img src="screenshots/Exercise-13/EX13-11-rule-101010-fired.png" width="400" alt="Rule 101010 fired at level 14"></a><br><sub>Rule 101010 fired at level 14</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-12-mitre-view.png"><img src="screenshots/Exercise-13/EX13-12-mitre-view.png" width="400" alt="MITRE mapping: T1110.001, T1021.001, T1078"></a><br><sub>MITRE mapping: T1110.001, T1021.001, T1078</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-05-nxc-rdp-bruteforce.png"><img src="screenshots/Exercise-13/EX13-05-nxc-rdp-bruteforce.png" width="400" alt="RDP brute force from Kali (nxc)"></a><br><sub>RDP brute force from Kali (nxc)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-07-4625-failures.png"><img src="screenshots/Exercise-13/EX13-07-4625-failures.png" width="400" alt="Failed logons (4625) and brute-force correlation"></a><br><sub>Failed logons (4625) and brute-force correlation</sub></td>
+  </tr>
+</table>
+<details>
+<summary><b>More screenshots</b> (11)</summary>
+<br>
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-01-crash-watch.png"><img src="screenshots/Exercise-13/EX13-01-crash-watch.png" width="400" alt="Crash watch at lab start (clean after SSD move)"></a><br><sub>Crash watch at lab start (clean after SSD move)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-02-rdp-enabled.png"><img src="screenshots/Exercise-13/EX13-02-rdp-enabled.png" width="400" alt="RDP enabled, port 3389 listening"></a><br><sub>RDP enabled, port 3389 listening</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-03-lockout-and-audit-policy.png"><img src="screenshots/Exercise-13/EX13-03-lockout-and-audit-policy.png" width="400" alt="Lockout threshold and logon audit policy"></a><br><sub>Lockout threshold and logon audit policy</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-04-nmap-3389-open.png"><img src="screenshots/Exercise-13/EX13-04-nmap-3389-open.png" width="400" alt="nmap: 3389 open (ms-wbt-server)"></a><br><sub>nmap: 3389 open (ms-wbt-server)</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-06-rdp-session-as-rdptest.png"><img src="screenshots/Exercise-13/EX13-06-rdp-session-as-rdptest.png" width="400" alt="RDP desktop session as rdptest (whoami)"></a><br><sub>RDP desktop session as rdptest (whoami)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-07b-4625-json.png"><img src="screenshots/Exercise-13/EX13-07b-4625-json.png" width="400" alt="4625 detail: logon type 3, attacker IP"></a><br><sub>4625 detail: logon type 3, attacker IP</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-08-multiple-failures.png"><img src="screenshots/Exercise-13/EX13-08-multiple-failures.png" width="400" alt="Multiple failures correlation (rule 60204, T1110)"></a><br><sub>Multiple failures correlation (rule 60204, T1110)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-09-4624-type10-success.png"><img src="screenshots/Exercise-13/EX13-09-4624-type10-success.png" width="400" alt="Successful RDP logon (4624 type 10, rule 92653)"></a><br><sub>Successful RDP logon (4624 type 10, rule 92653)</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-09b-4624-type10-success.png"><img src="screenshots/Exercise-13/EX13-09b-4624-type10-success.png" width="400" alt="4624 detail: logon type 10, attacker IP"></a><br><sub>4624 detail: logon type 10, attacker IP</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-10-local-rules-101000-101010.png"><img src="screenshots/Exercise-13/EX13-10-local-rules-101000-101010.png" width="400" alt="Custom rules 101000 and 101010 in local_rules.xml"></a><br><sub>Custom rules 101000 and 101010 in local_rules.xml</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-13/EX13-13-cleanup-rdp-off-user-deleted.png"><img src="screenshots/Exercise-13/EX13-13-cleanup-rdp-off-user-deleted.png" width="400" alt="Cleanup: rdptest deleted, RDP disabled, port closed"></a><br><sub>Cleanup: rdptest deleted, RDP disabled, port closed</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+</details>
+
+---
+
+## 🎓 What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
 - **Endpoint telemetry:** investigating process creation, registry and file events with Sysmon (image, command line, parent process)
@@ -912,16 +1035,17 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 - **Knowing when NOT to write a rule:** distinguishing a rule gap (event arrives, no rule matches) from a visibility gap (event never reaches the SIEM), and documenting the gap instead of shipping a rule that can never fire
 - **Rule internals:** Wazuh evaluates rules as a tree (`if_sid` vs `if_group`), the predecoder changes what `<match>` sees, and dashboard field names differ from rule field names
 - **Tuning:** narrow level 0 suppression rules backed by negative tests, so tuning never creates blind spots
-- **Attack coverage:** persistence (Run keys, scheduled tasks, Startup folder), lateral movement, tool transfer, SSH brute force, file tampering, and defense evasion (log clearing, disabling tools)
+- **Attack coverage:** persistence (Run keys, scheduled tasks, Startup folder), lateral movement, tool transfer, SSH and RDP brute force, file tampering, and defense evasion (log clearing, disabling tools)
 - **File integrity monitoring:** whodata answers who, what, when and how in a single alert; context (which folder, which file) decides whether a change is noise or an attack
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
 - **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
 
-## Next steps
+## 🚀 Next steps
 
 - Tune a child of rule 506 to raise "Wazuh agent stopped" to high severity
 - Close the crash/shutdown visibility gap with agent-side bookmark persistence or host/hypervisor-level monitoring
 - Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
 - Enable auditd to capture sudo execution on Linux
+- Add Wazuh Active Response to auto-block a brute-force source IP (the Windows quirk: the attacker IP is not in the `srcip` field)
 - Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab
