@@ -15,7 +15,7 @@
 
 <br>
 
-**[📊 Detection Summary](#-detection-summary)** &nbsp;·&nbsp; **[🧪 Exercises](#-contents)** &nbsp;·&nbsp; **[🎓 What I Learned](#-what-i-learned)** &nbsp;·&nbsp; **[🚀 Next Steps](#-next-steps)**
+**[📊 Detection Summary](#-detection-summary)** &nbsp;·&nbsp; **[🧪 Exercises](#-contents)** &nbsp;·&nbsp; **[📚 Docs](#-documentation)** &nbsp;·&nbsp; **[🎓 What I Learned](#-what-i-learned)** &nbsp;·&nbsp; **[🚀 Next Steps](#-next-steps)**
 
 </div>
 
@@ -31,10 +31,41 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 > - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001
 > - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg)
 
-[TryHackMe progress](tryhackme-progress.md)
+## 📚 Documentation
+
+| Document | What it covers |
+|---|---|
+| 🖥️ [Lab architecture](docs/01-architecture.md) | VMs, network, telemetry pipeline and collection configuration |
+| 📊 [Detection rules](docs/02-detection-rules.md) | Every custom rule with its parent, data source and MITRE mapping, plus documented gaps |
+| 🎓 [Lessons learned](docs/03-lessons-learned.md) | What broke, what misled me, and what I do differently now |
+| 🧾 [Playbooks](playbooks/) | Investigation checklists for the alerts this lab produces |
+| ⚙️ [Rules](rules/) | The deployable `local_rules.xml` running on the Wazuh manager |
+| 📈 [TryHackMe progress](docs/tryhackme-progress.md) | Rooms completed and how they connect to the lab |
+
+<details>
+<summary><b>Repository structure</b></summary>
+<br>
+
+```
+SOC-Home-Lab/
+├── README.md                 Overview, detection summary and all exercises
+├── docs/
+│   ├── 01-architecture.md
+│   ├── 02-detection-rules.md
+│   ├── 03-lessons-learned.md
+│   └── tryhackme-progress.md
+├── rules/
+│   └── local_rules.xml       Custom Wazuh rules (deployable)
+├── playbooks/                PB-01 … PB-05 investigation checklists
+└── screenshots/
+    └── Exercise-01 … Exercise-13
+```
+
+</details>
 
 ## 📑 Contents
 
+- [Documentation](#-documentation)
 - [Lab architecture](#-lab-architecture)
 - [Detection summary](#-detection-summary)
 - [Exercise 1: Windows Logon Brute Force](#exercise-1-windows-logon-brute-force)
@@ -61,7 +92,17 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 | Victim | Windows 11 Enterprise (agent: win11-victim) + Sysmon | 10.10.10.0/24 (DHCP) |
 | SIEM | Wazuh on Ubuntu Server | 10.10.10.10 |
 
-Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`
+```mermaid
+flowchart LR
+    KALI["🐉 SOC-Kali<br/>Attacker<br/>10.10.10.130"]
+    WIN["🪟 SOC-Win11<br/>Endpoint + Sysmon<br/>Wazuh agent"]
+    WAZ["🛡️ SOC-Wazuh<br/>SIEM<br/>10.10.10.10"]
+    KALI -- "SMB · RDP" --> WIN
+    KALI -- "SSH" --> WAZ
+    WIN -- "Logs · FIM<br/>TCP 1514" --> WAZ
+```
+
+Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full details: [docs/01-architecture.md](docs/01-architecture.md)
 
 **Tools:** VMware Workstation Pro, Wazuh 4.x (SIEM/XDR), Sysmon (SwiftOnSecurity config), Kali Linux (nmap, hydra, netexec), PowerShell, Git
 
@@ -83,6 +124,8 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`
 | 100930 | 11 | Windows event log cleared | T1070.001 Clear Windows Event Logs | 12 |
 | 101000 | 13 | RDP remote interactive logon (type 10) | T1021.001 Remote Desktop Protocol | 6 |
 | 101010 | 13 | RDP brute force that succeeded | T1110.001, T1021.001, T1078 | 14 |
+
+Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
 Screenshots for every exercise are in [`screenshots/`](screenshots/), one folder per exercise. Click any image to open it full size.
 
@@ -1040,6 +1083,8 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
 - **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
+
+The detailed version, with what happened and what I changed in each case, is in [docs/03-lessons-learned.md](docs/03-lessons-learned.md).
 
 ## 🚀 Next steps
 
