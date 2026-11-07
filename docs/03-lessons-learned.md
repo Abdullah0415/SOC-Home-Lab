@@ -39,10 +39,22 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Lesson | What happened | What I do now | Exercise |
 |---|---|---|---|
 | Slow storage breaks service restarts | `systemctl restart wazuh-manager` timed out and left daemons stopped | `wazuh-control stop`, remove `start-script-lock` (a directory: `rm -rf`), `wazuh-control start` | 5, 10, 11, 13 |
+| Glob patterns run as the user, not root | `sudo grep ... /var/ossec/ruleset/rules/*.xml` failed: the shell expands `*` before sudo | Use `sudo grep -r` on the folder | 14 |
+| Windows profiles need a proper removal | `Remove-Item C:\Users\<user>` left the profile behind | `Get-CimInstance Win32_UserProfile ... \| Remove-CimInstance` | 14 |
 | Unneeded modules cost stability | Vulnerability detection feed errors crashed `wazuh-modulesd` and the dashboard API | Disable what the lab does not need | 8 |
 | Keep a second way in | During API outages I verified alerts over SSH with `alerts.json` / `archives.json` | Always know how to read alerts without the dashboard | 8 |
 | DQL type quirks | `agent.id:000` returns nothing (parsed as a number) | Use `agent.name:soc-wazuh` | 9 |
 | Timezones | Server logs are UTC, the dashboard is UTC+2 | Every timeline states its timezone | 9 |
+
+## Automated response
+
+| Lesson | What happened | What I do now | Exercise |
+|---|---|---|---|
+| Containment is not prevention | The SSH block landed ~2 s after detection, but the attacker had logged in 1 s earlier (reproduced twice) | After any auto-block, check the source log for a successful login and reset the password | 14 |
+| A response depends on fields, not just rules | Rule 101010 fired at level 14, but netsh logged "Cannot read 'srcip'" and nothing was blocked | Check which fields a response script needs before relying on it | 14 |
+| Responses must be visible | The built-in "Host Blocked" alert (651) is only level 3 | Rule 101100 raises it to level 8 with a next-step hint | 14 |
+| Absence of an alert is not proof | One brute-forced login was in journald but never alerted (likely a journald rotation at that second) | Compare the SIEM with the source log when the stakes are high | 14 |
+| Test responses safely | A wrong block could lock the analyst out | Whitelist the analyst IP, short timeout, disable the response after testing | 14 |
 
 ## Troubleshooting method
 

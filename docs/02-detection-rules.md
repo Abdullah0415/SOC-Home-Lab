@@ -23,6 +23,21 @@ The deployable rule file is [`rules/local_rules.xml`](../rules/local_rules.xml),
 | 101000 | 6 | RDP remote interactive logon (type 10) | child of 92653, `logonType ^10$` | Windows Security 4624 | T1021.001 Remote Desktop Protocol | [13](../README.md#exercise-13-rdp-brute-force-and-successful-remote-logon) |
 | 101010 | 14 | RDP brute force that **succeeded** | child of 101000, `if_matched_sid 60204`, same source IP, 300 s | Windows Security 4624 + 4625 | T1110.001, T1021.001, T1078 | [13](../README.md#exercise-13-rdp-brute-force-and-successful-remote-logon) |
 
+## Response visibility rule
+
+| Rule | Level | Detects | Parent / logic | Data source | MITRE ATT&CK | Exercise |
+|---|---|---|---|---|---|---|
+| 101100 | 8 | Attacker IP auto-blocked by Active Response, with a reminder to check for a login before the block | child of 651 (firewall-drop `add`) | Active Response log | n/a (our response, not attacker behaviour) | [14](../README.md#exercise-14-automated-response-with-wazuh-active-response) |
+
+## Automated response
+
+Configuration: [`config/active-response.xml`](../config/active-response.xml). Both responses are disabled after testing.
+
+| Trigger | Response | Result |
+|---|---|---|
+| 5763 SSH brute force (L10) | `firewall-drop` (iptables), 180 s | Blocked ~2 s after detection, unblocked after 180 s, **but the attacker had already logged in** |
+| 101010 RDP brute force succeeded (L14) | `netsh` (Windows Firewall), 180 s | **Failed**: `Cannot read 'srcip' from data`; the IP is in `win.eventdata.ipAddress` |
+
 ## False-positive suppression rules
 
 Level 0 means "match, but do not alert". Both rules are deliberately narrow and were validated with a **negative test** to prove they do not create a blind spot.
@@ -59,6 +74,7 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | User added to Administrators (4732) | 60154 | 12 | Adequate |
 | SSH brute force (Linux) | 5763 / 2502 | 10 | Adequate |
 | Wazuh agent stopped | 506 | 3 | Correct MITRE (T1562.001) but severity too low, tuning planned |
+| Successful SSH login | 5715 | 3 | Adequate as a signal; correlated by 40112 / 100800 |
 
 ## Documented gaps (no rule possible yet)
 
@@ -68,6 +84,8 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Events written while the Wazuh agent is stopped | The agent does not replay missed EventChannel events | Treat agent stop as a high-severity incident |
 | Denied `sudo` by a non-sudoer (Ubuntu 26.04, sudo-rs) | The denial is not written to journald or auth.log | auditd rule on `sudo` execution |
 | Stopping Sysmon | Not possible: Sysmon64 is self-protected (denied even as SYSTEM) | Positive finding, no rule needed |
+| Windows auto-block on logon alerts | Stock response scripts read only `srcip`, which Windows EventChannel alerts do not fill | Custom response script reading `win.eventdata.ipAddress`, or block at the network edge |
+| Login missed during a log burst (one occurrence) | The event was in journald but never reached analysisd; logcollector refreshed its journald position "due to rotation" the same second | Confirm with archives enabled; check the source log after any auto-block |
 
 ## Rule-writing conventions
 

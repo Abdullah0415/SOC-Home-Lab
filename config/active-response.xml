@@ -1,0 +1,41 @@
+<!--
+  Active Response configuration used in Exercise 14
+  Source: /var/ossec/etc/ossec.conf on the Wazuh manager (SOC-Wazuh)
+
+  Both responses were tested and then set to <disabled>yes</disabled>,
+  so later exercises are not affected. The blocks are kept as evidence.
+  To re-enable, change <disabled> to "no" and restart the manager.
+-->
+
+<!-- Inside the existing <global> block for active response:
+     IPs that must never be blocked (host lab IP and the Windows endpoint) -->
+<global>
+  <white_list>127.0.0.1</white_list>
+  <white_list>^localhost.localdomain$</white_list>
+  <white_list>127.0.0.53</white_list>
+  <white_list>10.10.10.1</white_list>
+  <white_list>10.10.10.129</white_list>
+</global>
+
+<!-- Exercise 14: auto-block SSH brute force
+     Rule 5763 (SSH brute force) -> firewall-drop (iptables) on the attacked host for 180 s.
+     Result: blocked in ~2 s, unblocked after 180 s. -->
+<active-response>
+  <disabled>yes</disabled>
+  <command>firewall-drop</command>
+  <location>local</location>
+  <rules_id>5763</rules_id>
+  <timeout>180</timeout>
+</active-response>
+
+<!-- Exercise 14: try to auto-block RDP brute force on Windows
+     Rule 101010 (RDP brute force succeeded) -> netsh (Windows Firewall).
+     Result: the script ran but logged "Cannot read 'srcip' from data";
+     Windows logon alerts carry the IP in win.eventdata.ipAddress, not srcip. -->
+<active-response>
+  <disabled>yes</disabled>
+  <command>netsh</command>
+  <location>local</location>
+  <rules_id>101010</rules_id>
+  <timeout>180</timeout>
+</active-response>

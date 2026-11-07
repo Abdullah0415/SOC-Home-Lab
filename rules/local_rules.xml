@@ -165,3 +165,12 @@
   </rule>
 
 </group>
+
+<group name="local,active_response,">
+
+  <rule id="101100" level="8">
+    <if_sid>651</if_sid>
+    <description>Active Response: attacker $(srcip) auto-blocked by firewall-drop (target user $(dstuser)) - check whether the attacker logged in before the block</description>
+  </rule>
+
+</group>

@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Triggers** | 100800 (SSH, L14), 101010 (RDP, L14), built-in 40112 (SSH, L12) |
+| **Triggers** | 100800 (SSH, L14), 101010 (RDP, L14), built-in 40112 (SSH, L12), 101100 (auto-block, L8) |
 | **MITRE** | T1110.001 Password Guessing, T1078 Valid Accounts, T1021.001 Remote Desktop Protocol |
 | **Priority** | Critical: an attacker very likely holds a working password and is (or was) logged in |
 
@@ -14,6 +14,11 @@
 - [ ] Is the source IP internal, a known admin workstation, or unknown?
 - [ ] Is the account a real user, a service account or an admin?
 - [ ] Is the session still active?
+- [ ] **If the IP was auto-blocked (101100):** do not assume the attack failed. In Exercise 14 the attacker logged in one second before the block. Check the source log for a successful login:
+
+```bash
+sudo journalctl --since "<block time - 2 min>" | grep -i "accepted"
+```
 
 ## Investigation
 
@@ -50,7 +55,8 @@ A "known user" is not enough on its own: confirm with the person through a separ
 
 - [ ] Disable or lock the account and reset its password.
 - [ ] End active sessions (`logoff <id>` on Windows, `pkill -u <user>` on Linux).
-- [ ] Block the source IP (firewall or Wazuh Active Response).
+- [ ] Block the source IP (firewall or Wazuh Active Response). An automatic block is temporary (180 s in the lab); make it permanent if the activity is malicious.
+- [ ] On Windows, the stock `netsh` response does not work for logon alerts (no `srcip`), so block manually.
 - [ ] Hunt for persistence the attacker may have created ([PB-02](PB-02-persistence.md)).
 
 ## Record

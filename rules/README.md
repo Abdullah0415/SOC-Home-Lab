@@ -2,7 +2,7 @@
 
 [← Back to README](../README.md)
 
-[`local_rules.xml`](local_rules.xml) is an exact copy of the custom rule file running on the lab's Wazuh manager (`/var/ossec/etc/rules/local_rules.xml`). It contains 12 detection rules and 2 false-positive suppression rules. Rule 100001 is the example rule that Wazuh ships in this file by default and is not part of the lab.
+[`local_rules.xml`](local_rules.xml) is an exact copy of the custom rule file running on the lab's Wazuh manager (`/var/ossec/etc/rules/local_rules.xml`). It contains 12 detection rules, 1 response-visibility rule (101100) and 2 false-positive suppression rules. Rule 100001 is the example rule that Wazuh ships in this file by default and is not part of the lab.
 
 For what each rule detects, its parent rule, MITRE mapping and the exercise that proved it, see [docs/02-detection-rules.md](../docs/02-detection-rules.md).
 
@@ -16,6 +16,7 @@ For what each rule detects, its parent rule, MITRE mapping and the exercise that
 | 100900 – 100910 | File integrity monitoring |
 | 100930 | Defense evasion |
 | 101000 – 101010 | Windows RDP |
+| 101100 | Active Response visibility |
 
 ## Deploy
 

@@ -26,10 +26,10 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 > **At a glance**
-> - **13 exercises**, from brute-force detection to defense evasion and crash root-cause analysis
-> - **12 custom detection rules** (levels 10 to 14) and **2 false-positive suppression rules**
+> - **14 exercises**, from brute-force detection to defense evasion, crash root-cause analysis and automated response
+> - **12 custom detection rules** (levels 6 to 14), **1 response-visibility rule** and **2 false-positive suppression rules**
 > - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001
-> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg)
+> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response)
 
 ## 📚 Documentation
 
@@ -40,6 +40,7 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 | 🎓 [Lessons learned](docs/03-lessons-learned.md) | What broke, what misled me, and what I do differently now |
 | 🧾 [Playbooks](playbooks/) | Investigation checklists for the alerts this lab produces |
 | ⚙️ [Rules](rules/) | The deployable `local_rules.xml` running on the Wazuh manager |
+| 🛡️ [Config](config/) | Active Response configuration (automated blocking) |
 | 📈 [TryHackMe progress](docs/tryhackme-progress.md) | Rooms completed and how they connect to the lab |
 
 <details>
@@ -56,9 +57,11 @@ SOC-Home-Lab/
 │   └── tryhackme-progress.md
 ├── rules/
 │   └── local_rules.xml       Custom Wazuh rules (deployable)
+├── config/
+│   └── active-response.xml   Active Response blocks from ossec.conf
 ├── playbooks/                PB-01 … PB-05 investigation checklists
 └── screenshots/
-    └── Exercise-01 … Exercise-13
+    └── Exercise-01 … Exercise-14
 ```
 
 </details>
@@ -81,6 +84,7 @@ SOC-Home-Lab/
 - [Exercise 11: Defense Evasion and Endpoint Health](#exercise-11-defense-evasion-and-endpoint-health)
 - [Exercise 12: Endpoint Stability Troubleshooting](#exercise-12-endpoint-stability-troubleshooting-0x124-whea-crash)
 - [Exercise 13: RDP Brute Force and Successful Remote Logon](#exercise-13-rdp-brute-force-and-successful-remote-logon)
+- [Exercise 14: Automated Response with Wazuh Active Response](#exercise-14-automated-response-with-wazuh-active-response)
 - [What I learned](#-what-i-learned)
 - [Next steps](#-next-steps)
 
@@ -124,6 +128,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 100930 | 11 | Windows event log cleared | T1070.001 Clear Windows Event Logs | 12 |
 | 101000 | 13 | RDP remote interactive logon (type 10) | T1021.001 Remote Desktop Protocol | 6 |
 | 101010 | 13 | RDP brute force that succeeded | T1110.001, T1021.001, T1078 | 14 |
+| 101100 | 14 | Attacker IP auto-blocked by Active Response (raises built-in 651) | n/a (response) | 8 |
 
 Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
@@ -1070,6 +1075,168 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 
 ---
 
+## Exercise 14: Automated Response with Wazuh Active Response
+
+**Goal:** move from *detect* to *detect and contain*: when a brute force is detected, have Wazuh block the attacker's IP automatically, then remove the block after a timeout. Tested on both Linux (SSH) and Windows (RDP), and checked whether containment really happens in time.
+
+**Configuration** (manager `ossec.conf`, full blocks in [config/active-response.xml](config/active-response.xml)):
+
+| Response | Trigger | Script | Where | Timeout |
+|---|---|---|---|---|
+| SSH auto-block | 5763 SSH brute force (L10) | `firewall-drop` (iptables) | the attacked host (`local`) | 180 s |
+| RDP auto-block | 101010 RDP brute force succeeded (L14) | `netsh` (Windows Firewall) | the attacked host (`local`) | 180 s |
+
+The host's lab IP and the Windows endpoint were added to the active-response whitelist, so a response can never lock the analyst out.
+
+### 14.1 Linux SSH: the block works, but too late
+
+hydra from Kali (10.10.10.130) against a lab-only user on the Wazuh server:
+
+| Time (UTC) | Event |
+|---|---|
+| 12:44:12 | First failed password |
+| 12:44:16 | Rule **5763** (brute force, L10) fires → `firewall-drop add` for 10.10.10.130 |
+| 12:44:17 | **`Accepted password for testuser from 10.10.10.130`** in the source log |
+| 12:44:18 | Rule 651 "Host Blocked": iptables `DROP all 10.10.10.130`, ping and SSH from Kali fail |
+| 12:47:17 | Automatic `delete` exactly 180 s later, Kali reachable again (rule 652) |
+
+**Finding 1: containment is not prevention.** The block landed about 2 seconds after detection, but hydra had already found the password and logged in one second earlier. Reproduced on a second run (login 13:32:57, block 13:32:59). An analyst who sees only "Host Blocked" would wrongly assume the attack failed; the password is compromised and must be reset.
+
+**Finding 2: the first successful login produced no alert.** The source log shows the accepted login, but alerts.json held no 5715, 40112 or 100800 for it. `ossec.log` shows the logcollector refreshing its journald position "due to rotation" at 12:44:18, the same second, which is the most likely reason the event was skipped (not proven: archives were off). A normal SSH login afterwards alerted correctly, and on the re-run the login fired **100800 at level 14**, so this was a one-off pipeline loss, not a rule problem.
+
+**Finding 3: the block itself is nearly invisible.** Built-in rules 651/652 are level 3 with no MITRE mapping.
+
+**Custom rule 101100:** raises the block to level 8 and tells the analyst what to check next.
+
+```xml
+<group name="local,active_response,">
+
+  <rule id="101100" level="8">
+    <if_sid>651</if_sid>
+    <description>Active Response: attacker $(srcip) auto-blocked by firewall-drop (target user $(dstuser)) - check whether the attacker logged in before the block</description>
+  </rule>
+
+</group>
+```
+
+On the re-run, 5763 (L10), 100800 (L14) and 101100 (L8) appeared together, so the analyst sees both "the attacker got in" and "the attacker was blocked". No MITRE technique is mapped: this is our response, not attacker behaviour.
+
+### 14.2 Windows RDP: the response runs but cannot block
+
+nxc RDP brute force (8 wrong passwords, then the right one) and a real `xfreerdp3` desktop login from Kali against a lab-only user on the Windows endpoint.
+
+- Custom rule **101010** fired at **level 14** (detection worked).
+- The agent ran `netsh.exe` 31 seconds later and logged **`Cannot read 'srcip' from data`**.
+- No block alert (651), no Wazuh rule in Windows Firewall, RDP port 3389 still open, and the attacker kept the desktop for more than four minutes.
+
+**Root cause:** the alert carries the attacker IP in `win.eventdata.ipAddress` (10.10.10.130), but the stock response scripts read only `srcip`, which Windows EventChannel alerts do not fill:
+
+```
+rule 101010 | srcip present: False | ipAddress: 10.10.10.130
+```
+
+**Gap:** Wazuh's built-in Windows active response does not work for Windows logon events out of the box. Possible fixes: a custom response script that reads `win.eventdata.ipAddress`, or blocking at the network edge instead of on the endpoint.
+
+### Result
+
+| Test | Detection | Response |
+|---|---|---|
+| SSH brute force (Linux) | 5763 L10, 100800 L14 | Blocked in ~2 s, unblocked after 180 s, **but after the attacker had logged in** |
+| RDP brute force (Windows) | 101010 L14 | **Not blocked**: `srcip` missing |
+| Block visibility | 651 L3 | **101100 L8** with next-step guidance |
+
+Both responses were set back to `<disabled>yes</disabled>` after testing (blocks kept as evidence), so later exercises are not affected; the lab users, RDP and wordlists were removed.
+
+**Lessons:**
+- Automated response buys containment, not prevention: after any auto-block, check the source log for a successful login ([PB-01](playbooks/PB-01-brute-force-success.md)).
+- A response depends on fields, not just rules: the detection can be perfect while the response silently fails.
+- Absence of an alert is not proof of absence: the first login only showed up in the source log.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-07.png"><img src="screenshots/Exercise-14/EX14-07.png" width="400" alt="firewall-drop adds a block for 10.10.10.130 (rule 5763)"></a><br><sub>firewall-drop adds a block for 10.10.10.130 (rule 5763)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-08.png"><img src="screenshots/Exercise-14/EX14-08.png" width="400" alt="iptables DROP rule for the attacker"></a><br><sub>iptables DROP rule for the attacker</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-09.png"><img src="screenshots/Exercise-14/EX14-09.png" width="400" alt="Attacker cut off: ping and SSH fail"></a><br><sub>Attacker cut off: ping and SSH fail</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10b.png"><img src="screenshots/Exercise-14/EX14-10b.png" width="400" alt="Events: failures, 5763, block 651, unblock 652"></a><br><sub>Events: failures, 5763, block 651, unblock 652</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10c.png"><img src="screenshots/Exercise-14/EX14-10c.png" width="400" alt="Source log: login accepted 1 s before the block"></a><br><sub>Source log: login accepted 1 s before the block</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-16.png"><img src="screenshots/Exercise-14/EX14-16.png" width="400" alt="Windows agent: netsh cannot read srcip"></a><br><sub>Windows agent: netsh cannot read srcip</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-19.png"><img src="screenshots/Exercise-14/EX14-19.png" width="400" alt="101010 alert: srcip absent, ipAddress present"></a><br><sub>101010 alert: srcip absent, ipAddress present</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-21b.png"><img src="screenshots/Exercise-14/EX14-21b.png" width="400" alt="Rule 101100 makes the block visible at level 8"></a><br><sub>Rule 101100 makes the block visible at level 8</sub></td>
+  </tr>
+</table>
+<details>
+<summary><b>More screenshots</b> (28)</summary>
+<br>
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-00.png"><img src="screenshots/Exercise-14/EX14-00.png" width="400" alt="Lab clock verified (NTP synchronized)"></a><br><sub>Lab clock verified (NTP synchronized)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-01.png"><img src="screenshots/Exercise-14/EX14-01.png" width="400" alt="Host lab IP, added to the whitelist"></a><br><sub>Host lab IP, added to the whitelist</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-02.png"><img src="screenshots/Exercise-14/EX14-02.png" width="400" alt="Before: firewall-drop command present, iptables empty"></a><br><sub>Before: firewall-drop command present, iptables empty</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-03.png"><img src="screenshots/Exercise-14/EX14-03.png" width="400" alt="ossec.conf: whitelist and SSH response block"></a><br><sub>ossec.conf: whitelist and SSH response block</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-04.png"><img src="screenshots/Exercise-14/EX14-04.png" width="400" alt="Manager restarted, wazuh-execd running"></a><br><sub>Manager restarted, wazuh-execd running</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-05.png"><img src="screenshots/Exercise-14/EX14-05.png" width="400" alt="Baseline: Kali reaches SSH"></a><br><sub>Baseline: Kali reaches SSH</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-06.png"><img src="screenshots/Exercise-14/EX14-06.png" width="400" alt="hydra brute force from Kali"></a><br><sub>hydra brute force from Kali</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10a.png"><img src="screenshots/Exercise-14/EX14-10a.png" width="400" alt="Dashboard: brute force and response"></a><br><sub>Dashboard: brute force and response</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10d.png"><img src="screenshots/Exercise-14/EX14-10d.png" width="400" alt="A normal SSH login does alert (5715)"></a><br><sub>A normal SSH login does alert (5715)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10e.png"><img src="screenshots/Exercise-14/EX14-10e.png" width="400" alt="ossec.log: journald rotation at the same second"></a><br><sub>ossec.log: journald rotation at the same second</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-10f.png"><img src="screenshots/Exercise-14/EX14-10f.png" width="400" alt="No alert for the brute-forced login"></a><br><sub>No alert for the brute-forced login</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-11.png"><img src="screenshots/Exercise-14/EX14-11.png" width="400" alt="Automatic unblock after 180 s"></a><br><sub>Automatic unblock after 180 s</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-12.png"><img src="screenshots/Exercise-14/EX14-12.png" width="400" alt="Attacker reachable again"></a><br><sub>Attacker reachable again</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-13.png"><img src="screenshots/Exercise-14/EX14-13.png" width="400" alt="ossec.conf: Windows netsh response block"></a><br><sub>ossec.conf: Windows netsh response block</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-13b.png"><img src="screenshots/Exercise-14/EX14-13b.png" width="400" alt="RDP target prepared (lab user, port 3389)"></a><br><sub>RDP target prepared (lab user, port 3389)</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-14.png"><img src="screenshots/Exercise-14/EX14-14.png" width="400" alt="RDP brute force (nxc) and login (xfreerdp3)"></a><br><sub>RDP brute force (nxc) and login (xfreerdp3)</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-14b.png"><img src="screenshots/Exercise-14/EX14-14b.png" width="400" alt="Attacker logging in over RDP"></a><br><sub>Attacker logging in over RDP</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-14c.png"><img src="screenshots/Exercise-14/EX14-14c.png" width="400" alt="Attacker on the desktop minutes later, no block"></a><br><sub>Attacker on the desktop minutes later, no block</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-15.png"><img src="screenshots/Exercise-14/EX14-15.png" width="400" alt="Events: 101010 at level 14, no block alert"></a><br><sub>Events: 101010 at level 14, no block alert</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-17.png"><img src="screenshots/Exercise-14/EX14-17.png" width="400" alt="No Wazuh rule in Windows Firewall"></a><br><sub>No Wazuh rule in Windows Firewall</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-18.png"><img src="screenshots/Exercise-14/EX14-18.png" width="400" alt="RDP port still open to the attacker"></a><br><sub>RDP port still open to the attacker</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-20.png"><img src="screenshots/Exercise-14/EX14-20.png" width="400" alt="Rule 101100 added and validated"></a><br><sub>Rule 101100 added and validated</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-21a.png"><img src="screenshots/Exercise-14/EX14-21a.png" width="400" alt="hydra re-run to test rule 101100"></a><br><sub>hydra re-run to test rule 101100</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-22.png"><img src="screenshots/Exercise-14/EX14-22.png" width="400" alt="Re-run: login alerted by 100800 at level 14"></a><br><sub>Re-run: login alerted by 100800 at level 14</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-23.png"><img src="screenshots/Exercise-14/EX14-23.png" width="400" alt="Both responses disabled after the exercise"></a><br><sub>Both responses disabled after the exercise</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-24a.png"><img src="screenshots/Exercise-14/EX14-24a.png" width="400" alt="Cleanup: SOC-Wazuh"></a><br><sub>Cleanup: SOC-Wazuh</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-24b.png"><img src="screenshots/Exercise-14/EX14-24b.png" width="400" alt="Cleanup: SOC-Win11"></a><br><sub>Cleanup: SOC-Win11</sub></td>
+    <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-14/EX14-24c.png"><img src="screenshots/Exercise-14/EX14-24c.png" width="400" alt="Cleanup: SOC-Kali"></a><br><sub>Cleanup: SOC-Kali</sub></td>
+  </tr>
+</table>
+
+</details>
+
+---
+
 ## 🎓 What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
@@ -1082,6 +1249,7 @@ The fix will keep being monitored over the next lab sessions before the old HDD 
 - **File integrity monitoring:** whodata answers who, what, when and how in a single alert; context (which folder, which file) decides whether a change is noise or an attack
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
+- **Automated response:** Wazuh Active Response contains an attacker in seconds, but containment is not prevention, and a response can fail silently when the field it needs (`srcip`) is missing
 - **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
 
 The detailed version, with what happened and what I changed in each case, is in [docs/03-lessons-learned.md](docs/03-lessons-learned.md).
@@ -1092,5 +1260,6 @@ The detailed version, with what happened and what I changed in each case, is in 
 - Close the crash/shutdown visibility gap with agent-side bookmark persistence or host/hypervisor-level monitoring
 - Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
 - Enable auditd to capture sudo execution on Linux
-- Add Wazuh Active Response to auto-block a brute-force source IP (the Windows quirk: the attacker IP is not in the `srcip` field)
+- Custom Windows active-response script that reads `win.eventdata.ipAddress`, so RDP brute force can be blocked too
+- Confirm the journald-rotation event loss with archives enabled during a burst
 - Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab

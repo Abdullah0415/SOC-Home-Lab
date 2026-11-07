@@ -74,6 +74,7 @@ flowchart LR
 ## Operating notes
 
 - **Archives** (`logall_json`) are off by default and enabled only temporarily to prove whether an event reached the manager. They are always switched back off afterwards.
+- **Active Response** (automatic IP blocking) is configured on the manager but **disabled** after Exercise 14, so attacker IPs are not blocked during other exercises. Configuration: [config/active-response.xml](../config/active-response.xml).
 - **Vulnerability detection** is disabled: its feed download failure kept crashing `wazuh-modulesd` and broke the dashboard API. It is not needed for attack detection in this lab.
 - **Manager restarts:** on the slow HDD, `systemctl restart` can time out and leave the manager half-stopped. The reliable sequence is `wazuh-control stop`, remove any leftover `/var/ossec/var/start-script-lock` directory, then `wazuh-control start`.
 - **Snapshots** are taken on SOC-Win11 and SOC-Wazuh at the end of every exercise, so each exercise can be reproduced from a known state.
