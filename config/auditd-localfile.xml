@@ -1,0 +1,7 @@
+<!-- Exercise 15: added to the Wazuh manager's /var/ossec/etc/ossec.conf
+     (inside <ossec_config>, after the dpkg.log localfile block).
+     Requires auditd running with config/auditd-wazuh-lab.rules loaded. -->
+<localfile>
+  <log_format>audit</log_format>
+  <location>/var/log/audit/audit.log</location>
+</localfile>

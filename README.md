@@ -58,10 +58,12 @@ SOC-Home-Lab/
 ├── rules/
 │   └── local_rules.xml       Custom Wazuh rules (deployable)
 ├── config/
-│   └── active-response.xml   Active Response blocks from ossec.conf
-├── playbooks/                PB-01 … PB-05 investigation checklists
+│   ├── active-response.xml   Active Response blocks from ossec.conf
+│   ├── auditd-wazuh-lab.rules  Linux audit rules (Exercise 15)
+│   └── auditd-localfile.xml   audit.log input for Wazuh
+├── playbooks/                PB-01 … PB-06 investigation checklists
 └── screenshots/
-    └── Exercise-01 … Exercise-14
+    └── Exercise-01 … Exercise-15
 ```
 
 </details>
@@ -85,6 +87,7 @@ SOC-Home-Lab/
 - [Exercise 12: Endpoint Stability Troubleshooting](#exercise-12-endpoint-stability-troubleshooting-0x124-whea-crash)
 - [Exercise 13: RDP Brute Force and Successful Remote Logon](#exercise-13-rdp-brute-force-and-successful-remote-logon)
 - [Exercise 14: Automated Response with Wazuh Active Response](#exercise-14-automated-response-with-wazuh-active-response)
+- [Exercise 15: Linux Privilege Escalation Visibility with auditd](#exercise-15-linux-privilege-escalation-visibility-with-auditd)
 - [What I learned](#-what-i-learned)
 - [Next steps](#-next-steps)
 
@@ -129,6 +132,9 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 101000 | 13 | RDP remote interactive logon (type 10) | T1021.001 Remote Desktop Protocol | 6 |
 | 101010 | 13 | RDP brute force that succeeded | T1110.001, T1021.001, T1078 | 14 |
 | 101100 | 14 | Attacker IP auto-blocked by Active Response (raises built-in 651) | n/a (response) | 8 |
+| 101200 | 15 | sudo run by a non-admin login user (auditd) | T1548.003 Sudo and Sudo Caching | 10 |
+| 101210 | 15 | /etc/shadow read attempt by a login user (auditd) | T1003.008 /etc/passwd and /etc/shadow | 12 |
+| 101220 | 15 | Sudoers file created, modified, chmod or deleted (auditd) | T1548.003 Sudo and Sudo Caching | 12 |
 
 Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
@@ -1234,6 +1240,187 @@ Both responses were set back to `<disabled>yes</disabled>` after testing (blocks
 </table>
 
 </details>
+
+---
+
+## Exercise 15: Linux Privilege Escalation Visibility with auditd
+
+**Goal:** close the visibility gap found in Exercise 9. An attacker with stolen SSH credentials ran `sudo -l` and `sudo cat /etc/shadow` on the Wazuh server. sudo-rs (Ubuntu 26.04) denied both but wrote **nothing** to auth.log or journald, so Wazuh saw nothing.
+
+**MITRE:** T1548.003 Sudo and Sudo Caching · T1003.008 /etc/passwd and /etc/shadow · T1078 Valid Accounts
+**Hosts:** SOC-Wazuh (10.10.10.10, target + manager) · SOC-Kali (10.10.10.130, attacker)
+
+### 1. Before: proving the gap
+A lab-only, non-sudo user `testuser` logged in from Kali and tried three escalation steps. All three were denied:
+
+| Command | Result |
+|---|---|
+| `sudo -l` | "Sorry, user testuser may not run sudo" (no password prompt) |
+| `sudo cat /etc/shadow` | denied |
+| `cat /etc/shadow` | Permission denied |
+
+`journalctl` showed every **successful** sudo by the admin, but **nothing** about testuser's denied attempts. The dashboard had no escalation alert at all (level 12+: 0).
+
+**Side finding:** testuser's SSH login itself (`Accepted password`, 11:26:28 UTC) produced **no 5715 alert**. Wazuh's logcollector logged *"Journald timestamp was refreshed due to rotation"* one second later (11:26:29). The same thing happened in Exercise 14 (12:44:17 / 12:44:18), both times right after testuser was newly created. Working hypothesis: a new UID's first login makes journald open a per-user journal file, and logcollector skips the events around it. To be tested in Exercise 18.
+
+### 2. auditd: kernel-level visibility
+auditd records system calls (a program started, a file opened) **before** the program decides anything, so even a silent sudo-rs cannot hide.
+
+Audit rules (`config/auditd-wazuh-lab.rules`), using Wazuh's own audit keys:
+
+| Key | Watches |
+|---|---|
+| `audit-wazuh-c` | every `execve` by a real logged-in user (`auid>=1000`) |
+| `audit-wazuh-r` | read attempts on `/etc/shadow` (allowed or denied) |
+| `audit-wazuh-w` | writes and attribute changes on `/etc/sudoers` and `/etc/sudoers.d/` |
+
+`/var/log/audit/audit.log` was added to the manager with `<log_format>audit</log_format>` (`config/auditd-localfile.xml`).
+
+A local `ausearch` already showed the denied `cat /etc/shadow` with `success=no exit=EACCES auid=analyst`, which is exactly what sudo-rs never logged.
+
+### 3. Investigation: what Wazuh's built-in rules do
+All audit events arrived, but **every one at level 3**:
+
+| Action | Built-in rule | auid | success |
+|---|---|---|---|
+| testuser runs sudo | 80792 Command | 1001 | yes (sudo started) |
+| testuser reads /etc/shadow | 80784 Read access | 1001 | **no** |
+| admin runs sudo | 80792 Command | 1000 | yes |
+| sudoers.d file created | 80790 Created | 1000 | yes |
+
+The attacker's sudo and the admin's sudo look **identical** except for `auid`. Rule 80784 says *"Read access"* even when the read was denied; the real outcome is only in the `success` field.
+
+Things learned from the live events, not guessed:
+- Ubuntu 26.04 ships **Rust coreutils and sudo-rs**: `exe` is `/usr/lib/cargo/bin/sudo` and `/usr/lib/cargo/bin/coreutils/cat`, not `/usr/bin/...`.
+- `/etc/shadow` is read legitimately by `unix_chkpwd` (every sudo password check), `sshd-session` and `systemd-executor` (every login), and by Wazuh's own daemons.
+- Wazuh daemons carried the **admin's auid (1000)** because they were started with `sudo wazuh-control start`. auid tells you *who logged in*, not *which program* acted.
+
+### 4. Custom rules
+
+| Rule | Parent | Logic | Level | MITRE |
+|---|---|---|---|---|
+| 101200 | 80792 | exe ends in `/sudo`, auid is not the admin (1000) | 10 | T1548.003 |
+| 101210 | 80784 | key `audit-wazuh-r`, exe is **not** unix_chkpwd / sshd-session / systemd-executor / Wazuh / sudo | 12 | T1003.008 |
+| 101220 | 80780–80782, 80786–80788, 80790, 80791 | key `audit-wazuh-w` (create, write, attribute, delete) | 12 | T1548.003 |
+
+```xml
+<group name="local,audit,privilege_escalation,">
+
+  <rule id="101200" level="10">
+    <if_sid>80792</if_sid>
+    <field name="audit.exe">/sudo$</field>
+    <field name="audit.auid" negate="yes">^1000$</field>
+    <description>Privilege escalation attempt: sudo run by non-admin login user $(audit.auid)</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+  <rule id="101210" level="12">
+    <if_sid>80784</if_sid>
+    <field name="audit.key">^audit-wazuh-r$</field>
+    <field name="audit.exe" negate="yes">unix_chkpwd|sshd-session|systemd-executor|/var/ossec/bin/|/sudo$</field>
+    <description>Credential access: /etc/shadow read attempt by login user $(audit.auid) via $(audit.exe) (success: $(audit.success))</description>
+    <mitre>
+      <id>T1003.008</id>
+    </mitre>
+  </rule>
+
+  <rule id="101220" level="12">
+    <if_sid>80780,80781,80782,80786,80787,80788,80790,80791</if_sid>
+    <field name="audit.key">^audit-wazuh-w$</field>
+    <description>Sudo configuration changed by login user $(audit.auid): $(audit.file.name)</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+</group>
+```
+
+**A bug caught by testing every action:** 101220 was first written only as a child of 80790. It fired when a sudoers file was **created**, but stayed silent when an existing file was **modified** (`tee -a`), because Wazuh uses a different rule (80781 "Write access") for that. An attacker appending one line to an existing sudoers file would have been invisible. After adding every write, attribute and delete parent, create, modify, `chmod` and `rm` all raised 101220.
+
+### 5. Result
+
+| Check | Result |
+|---|---|
+| testuser `sudo -l` / `sudo cat /etc/shadow` | 101200, level 10 (×2) |
+| testuser `cat /etc/shadow` (denied) | 101210, level 12, `success: no` |
+| sudoers.d modify / chmod / delete | 101220, level 12 |
+| admin `sudo ls /root` | **no** 101200 (admin told apart from attacker) |
+| testuser login reading shadow via sshd-session | **no** 101210 (no false positive) |
+
+The Exercise 9 gap is **closed**: an attack that was completely invisible now raises level 10–12 alerts with MITRE mapping.
+
+### 6. Noise: an honest finding
+The execve rule produced **4,341** command alerts in about 35 minutes. **89%** of them were `/usr/bin/dash` (1,948) and `/usr/bin/ps` (1,901) from the `wazuh-control` script during three manager restarts. Only 30 were sudo. Planned tuning for Exercise 18: limit execve auditing to sudo/su and common attacker tools, or exclude Wazuh's own scripts.
+
+### Screenshots
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-03.png" width="100%"><br><sub>Before: journal shows the admin's sudo, nothing from the attacker</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-07.png" width="100%"><br><sub>auditd records the denied /etc/shadow read (success=no)</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-16.png" width="100%"><br><sub>Custom rules 101200, 101210, 101220 firing</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-17.png" width="100%"><br><sub>MITRE view: T1548.003 and T1003.008</sub></td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-01.png" width="100%"><br><sub>Backups, Exercise 14 responses still disabled</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-02.png" width="100%"><br><sub>Attacker's three escalation attempts, all denied</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-04a.png" width="100%"><br><sub>Dashboard before auditd: no level 12+ alerts</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-04b.png" width="100%"><br><sub>testuser events: account creation and logout only</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-04c.png" width="100%"><br><sub>No 5715 alert for testuser's login</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-04d.png" width="100%"><br><sub>Login at 11:26:28, journald rotation at 11:26:29</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-05.png" width="100%"><br><sub>auditd installed and running</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-06.png" width="100%"><br><sub>Five audit rules loaded</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-08.png" width="100%"><br><sub>audit.log localfile block in ossec.conf</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-09.png" width="100%"><br><sub>Logcollector analyzing audit.log</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-10.png" width="100%"><br><sub>First audit alerts, all level 3</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-11.png" width="100%"><br><sub>Attack repeated from Kali</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-12.png" width="100%"><br><sub>Sudoers persistence test file</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-13.png" width="100%"><br><sub>Audit alert list: parent IDs, exe, auid, success</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-14.png" width="100%"><br><sub>Full audit fields for each alert type</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-15.png" width="100%"><br><sub>wazuh-analysisd -t: rules valid</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-16b.png" width="100%"><br><sub>101220 confirmed in alerts.json after the parent-ID fix</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-18.png" width="100%"><br><sub>Noise: 4,341 command alerts, 89% dash + ps</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-15/EX15-19.png" width="100%"><br><sub>Cleanup: test file and lab user removed</sub></td>
+<td><img src="screenshots/Exercise-15/EX15-19b.png" width="100%"><br><sub>Deleting the sudoers file also raises 101220</sub></td>
+</tr>
+</table>
+
+</details>
+
+### Key takeaways
+- A program that stays silent can still be watched at the kernel level. Logging should not depend on the attacker's tool deciding to log.
+- `auid` separates the attacker from the admin, but it means "who logged in", not "which program". Services started with sudo inherit the admin's auid.
+- Every parent rule ID and field name must come from live events. Here that caught the Rust paths, four extra legitimate readers of `/etc/shadow`, and a missing modify path in 101220.
+- More visibility means more noise. The value is in the few high-level rules on top, not in the thousands of level 3 events underneath.
 
 ---
 

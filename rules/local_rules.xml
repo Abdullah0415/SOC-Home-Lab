@@ -174,3 +174,37 @@
   </rule>
 
 </group>
+
+<!-- Exercise 15: Linux privilege escalation visibility with auditd -->
+<group name="local,audit,privilege_escalation,">
+
+  <rule id="101200" level="10">
+    <if_sid>80792</if_sid>
+    <field name="audit.exe">/sudo$</field>
+    <field name="audit.auid" negate="yes">^1000$</field>
+    <description>Privilege escalation attempt: sudo run by non-admin login user $(audit.auid)</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+  <rule id="101210" level="12">
+    <if_sid>80784</if_sid>
+    <field name="audit.key">^audit-wazuh-r$</field>
+    <field name="audit.exe" negate="yes">unix_chkpwd|sshd-session|systemd-executor|/var/ossec/bin/|/sudo$</field>
+    <description>Credential access: /etc/shadow read attempt by login user $(audit.auid) via $(audit.exe) (success: $(audit.success))</description>
+    <mitre>
+      <id>T1003.008</id>
+    </mitre>
+  </rule>
+
+  <rule id="101220" level="12">
+    <if_sid>80780,80781,80782,80786,80787,80788,80790,80791</if_sid>
+    <field name="audit.key">^audit-wazuh-w$</field>
+    <description>Sudo configuration changed by login user $(audit.auid): $(audit.file.name)</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+  </rule>
+
+</group>

@@ -69,3 +69,14 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 - **Sysmon is hard to kill.** `Stop-Service`, `sc.exe stop`, `Stop-Process -Force` and PsExec as SYSTEM were all denied (Exercise 11). Endpoint telemetry cannot be trivially disabled by an attacker with admin rights.
 - **FIM and Sysmon complement each other.** A file created outside the monitored folders was missed by FIM but caught by Sysmon (Exercise 10).
 - **Whodata answers who, what and how in one alert:** user, process, PID and the exact line changed (Exercise 10).
+
+## Exercise 15: Linux privilege escalation with auditd
+- **Silent tools can still be watched.** sudo-rs does not log denied sudo, but the kernel still sees the execve and the /etc/shadow open. auditd turns "the tool did not log it" into "the kernel recorded it".
+- **auid is "who logged in", not "which program".** The attacker's sudo and the admin's sudo were identical apart from auid. Services started with `sudo` (e.g. Wazuh's daemons after `sudo wazuh-control start`) inherit the admin's auid.
+- **Built-in descriptions can mislead.** Wazuh rule 80784 says "Read access" even when the read was denied. The `success` field holds the truth, so the custom rule puts it in the description.
+- **Find legitimate readers before writing an alert.** /etc/shadow is read by unix_chkpwd (each sudo), sshd-session and systemd-executor (each login) and Wazuh itself. Without excluding them, 101210 would fire at level 12 on every login.
+- **Ubuntu 26.04 uses Rust tools.** sudo is /usr/lib/cargo/bin/sudo and cat is /usr/lib/cargo/bin/coreutils/cat. A rule written with /usr/bin paths would never fire.
+- **Test every kind of action.** 101220 first covered only "file created" (80790). Modifying an existing sudoers file uses 80781, so the most likely attacker action was invisible until create, modify, chmod and delete were all tested.
+- **Visibility has a cost.** 4,341 execve alerts in ~35 minutes, mostly from Wazuh's own control script. Detection value comes from a few precise rules on top of the raw data.
+- **Reading a live log file can hit a half-written line.** Scripts that parse alerts.json should skip lines that fail to parse.
+

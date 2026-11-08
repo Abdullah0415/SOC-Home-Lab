@@ -22,6 +22,9 @@ The deployable rule file is [`rules/local_rules.xml`](../rules/local_rules.xml),
 | 100930 | 12 | Windows event log cleared | child of 63103 / 63104, Event 1102 or 104 | Windows Security / System | T1070.001 Clear Windows Event Logs | [11](../README.md#exercise-11-defense-evasion-and-endpoint-health) |
 | 101000 | 6 | RDP remote interactive logon (type 10) | child of 92653, `logonType ^10$` | Windows Security 4624 | T1021.001 Remote Desktop Protocol | [13](../README.md#exercise-13-rdp-brute-force-and-successful-remote-logon) |
 | 101010 | 14 | RDP brute force that **succeeded** | child of 101000, `if_matched_sid 60204`, same source IP, 300 s | Windows Security 4624 + 4625 | T1110.001, T1021.001, T1078 | [13](../README.md#exercise-13-rdp-brute-force-and-successful-remote-logon) |
+| 101200 | 10 | Sudo run by a **non-admin** login user | child of 80792 (audit command), exe `/sudo$`, auid not `^1000$` | auditd execve | T1548.003 Sudo and Sudo Caching | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
+| 101210 | 12 | `/etc/shadow` read attempt (allowed or denied) | child of 80784, key `audit-wazuh-r`, exe not unix_chkpwd / sshd-session / systemd-executor / Wazuh / sudo | auditd file watch | T1003.008 /etc/passwd and /etc/shadow | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
+| 101220 | 12 | Sudoers file created, modified, chmod or deleted | child of 80780–80782, 80786–80788, 80790, 80791, key `audit-wazuh-w` | auditd file watch | T1548.003 Sudo and Sudo Caching | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
 
 ## Response visibility rule
 
@@ -62,6 +65,8 @@ Level 0 means "match, but do not alert". Both rules are deliberately narrow and 
 | Command and Control | T1105 Ingress Tool Transfer | 100600 |
 | Defense Evasion | T1070.001 Clear Windows Event Logs | 100930 |
 | Impact | T1565.001 Stored Data Manipulation | 100900 |
+| Privilege Escalation | T1548.003 Sudo and Sudo Caching | 101200, 101220 |
+| Credential Access | T1003.008 /etc/passwd and /etc/shadow | 101210 |
 
 ## Built-in coverage verified (no custom rule needed)
 
@@ -82,10 +87,15 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 |---|---|---|
 | Endpoint crash / unexpected shutdown (Events 41, 6008) | Events are written while the agent is down and are never forwarded | Host or hypervisor-level monitoring |
 | Events written while the Wazuh agent is stopped | The agent does not replay missed EventChannel events | Treat agent stop as a high-severity incident |
-| Denied `sudo` by a non-sudoer (Ubuntu 26.04, sudo-rs) | The denial is not written to journald or auth.log | auditd rule on `sudo` execution |
 | Stopping Sysmon | Not possible: Sysmon64 is self-protected (denied even as SYSTEM) | Positive finding, no rule needed |
 | Windows auto-block on logon alerts | Stock response scripts read only `srcip`, which Windows EventChannel alerts do not fill | Custom response script reading `win.eventdata.ipAddress`, or block at the network edge |
-| Login missed during a log burst (one occurrence) | The event was in journald but never reached analysisd; logcollector refreshed its journald position "due to rotation" the same second | Confirm with archives enabled; check the source log after any auto-block |
+| First SSH login of a newly created user not alerted (seen twice: Exercises 14 and 15) | The `Accepted password` line is in journald, but logcollector logs "Journald timestamp was refreshed due to rotation" within one second and skips it; later logins alert normally | Test the per-user journal file hypothesis in Exercise 18; until then, check the source log after any auto-block or new account |
+
+## Closed gaps
+
+| Gap | Found in | Closed in | How |
+|---|---|---|---|
+| Denied `sudo` by a non-sudoer not logged (Ubuntu 26.04, sudo-rs) | [9](../README.md#exercise-9-linux-ssh-brute-force-and-successful-login) | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) | auditd records the sudo execve and the `/etc/shadow` open at kernel level; rules 101200 (L10) and 101210 (L12) |
 
 ## Rule-writing conventions
 
