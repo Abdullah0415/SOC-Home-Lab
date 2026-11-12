@@ -15,6 +15,9 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | A correlation rule consumes its child | Only 101010 appeared, not 101000, after the re-test | The correlation alert is the proof the child fired | 13 |
 | Escaping in JSON fields | The Run key path is backslash-escaped, so the regex needed `CurrentVersion\\+Run` | Test regexes against the raw JSON event | 6 |
 | Context decides severity | The same FIM rule (level 7) fired for a routine file and for a sensitive Finance file | Raise severity by path, not by event type alone | 10 |
+| A built-in rule existing is not coverage | 92057 missed `-enc` and any non-PowerShell parent; 91837 has a typo (`Invoke-Expresion`) | Test every variant, then read the vendor rule to explain each miss | 16 |
+| Sibling rules compete | Two children of the same parent can match one event, but only one is reported | List the competing built-in rule in `if_sid` as well; the higher-level custom rule won in the re-test | 16 |
+| Rules may match the channel, not the Event ID | Searching the ruleset for "4104" found nothing; the PowerShell parents are 91801 → 91802 (level 0) | Find the parent from a live alert's rule ID, then read its file | 16 |
 
 ## Tuning
 
@@ -22,6 +25,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 |---|---|---|---|
 | Suppress the pattern, not the rule | Not every 92213 alert was the PowerShell policy-test file | Level 0 child rules matching the exact process **and** file / command line / parent | 8 |
 | A suppression needs a negative test | Proved `sdbinst -m -bg` from an admin shell still alerts after rule 100710 | Every suppression ships with a test showing real activity still alerts | 8 |
+| Your own tools make noise | 8 of the first 4104 alerts were the Wazuh agent's SCA scan (`secedit /export`) | Identify the source of every new alert before tuning | 16 |
+| Measure before trusting the count | 243 script blocks → 22 alerts, 12 of them noise from three known sources | Count by rule and script text after enabling any new log source | 16 |
 
 ## Log pipeline and visibility
 
@@ -33,6 +38,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Rule gap vs visibility gap | Crash events (41, 6008) never reached the manager at all | Do not ship rules for data that never arrives; document the gap instead | 11 |
 | Same Event ID, different meaning | Event 1001 exists in System (bugcheck) and Application (Windows Error Reporting) | Filter by channel and provider, not just Event ID | 10 |
 | Some systems do not log what you expect | sudo-rs on Ubuntu 26.04 did not log denied `sudo` attempts | Verify the log exists before planning a detection; auditd as a fix | 9 |
+| Command lines hide encoded code | Sysmon showed only `-EncodedCommand VwBy...` | Collect PowerShell 4104, which records the decoded script block | 16 |
+| Policy changes apply to new processes | After setting Script Block Logging to 0, the running session kept logging and recorded the change | Test logging changes in a new window; a running session is evidence | 16 |
 
 ## Operating the SIEM
 
@@ -45,6 +52,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Keep a second way in | During API outages I verified alerts over SSH with `alerts.json` / `archives.json` | Always know how to read alerts without the dashboard | 8 |
 | DQL type quirks | `agent.id:000` returns nothing (parsed as a number) | Use `agent.name:soc-wazuh` | 9 |
 | Timezones | Server logs are UTC, the dashboard is UTC+2 | Every timeline states its timezone | 9 |
+| Elevated editors on Windows 11 | The tabbed Notepad opened `ossec.conf` in an existing non-admin window ("no permission") | Start Notepad as administrator, then File → Open | 16 |
+| Test servers change the data type | Python's `http.server` serves `.ps1` as binary, so `Invoke-WebRequest` returned bytes | Decode with `[Text.Encoding]::UTF8.GetString(...)` | 16 |
 
 ## Automated response
 
@@ -80,3 +89,11 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 - **Visibility has a cost.** 4,341 execve alerts in ~35 minutes, mostly from Wazuh's own control script. Detection value comes from a few precise rules on top of the raw data.
 - **Reading a live log file can hit a half-written line.** Scripts that parse alerts.json should skip lines that fail to parse.
 
+## Exercise 16: PowerShell attacks and Script Block Logging
+- **Decoded content beats command lines.** Sysmon Event 1 showed `-EncodedCommand VwBy...`; Event 4104 showed `Write-Output ...; whoami`. PowerShell detections should read the script block.
+- **Test the built-in rule against every variant.** 92057 caught `-EncodedCommand` and `-e` but not `-enc`, and never fires for a `cmd.exe` parent. Reading the rule file explained it: `enc` is missing from its spelling list.
+- **Vendor rules can have bugs.** 91837 searches for `Invoke-Expresion`, so the full spelling never alerts; 91823 matches `Cn` anywhere and fired at level 14 on a Windows script.
+- **Sibling rules compete.** Adding the competing built-in IDs to `if_sid` keeps a custom rule in play; when two custom rules matched one script block, the higher-level one was reported.
+- **Turning logging off records itself.** The setting is read when PowerShell starts, so the disabling command landed in 4104 even though Sysmon did not see the registry change.
+- **New visibility, new noise.** 243 script blocks, 22 alerts, 12 of them noise from the SCA scan, Windows maintenance scripts and a loose built-in regex.
+- **Kali's clock was in another timezone** than the Windows VM; convert every time before building a timeline.

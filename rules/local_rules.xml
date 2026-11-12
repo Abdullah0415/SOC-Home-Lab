@@ -208,3 +208,62 @@
   </rule>
 
 </group>
+
+<!-- Exercise 16: PowerShell attacks - encoded commands and script block logging -->
+<group name="local,windows,powershell,">
+
+  <rule id="101300" level="12">
+    <if_sid>61603, 92027, 92032, 92057</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(powershell|pwsh)\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\s[-/](e|ec|en[a-z]*)\s+[A-Za-z0-9+/=]{20,}</field>
+    <description>Encoded PowerShell command started by $(win.eventdata.user) (parent: $(win.eventdata.parentImage))</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1027.010</id>
+    </mitre>
+  </rule>
+
+  <rule id="101310" level="12">
+    <if_sid>91802, 91837</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(downloadstring|downloadfile|downloaddata|net\.webclient|invoke-webrequest|\biwr\b|start-bitstransfer)</field>
+    <description>PowerShell script block downloads content (possible download cradle) on $(win.system.computer)</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1105</id>
+    </mitre>
+  </rule>
+
+  <rule id="101320" level="10">
+    <if_sid>91802, 91809, 91837</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(frombase64string|\[char\[\]\]|-bxor|\(\s*['"][\w-]+['"]\s*\+\s*['"])</field>
+    <description>PowerShell script block decodes or rebuilds code at run time on $(win.system.computer)</description>
+    <mitre>
+      <id>T1027.010</id>
+      <id>T1140</id>
+    </mitre>
+  </rule>
+
+  <rule id="101315" level="8">
+    <if_sid>91802</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)invoke-expression</field>
+    <description>PowerShell script block runs a string as code with Invoke-Expression on $(win.system.computer) (full spelling missed by built-in 91837)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<!-- Exercise 16 (optional): Script Block Logging turned off -->
+<group name="local,windows,powershell,defense_evasion,">
+
+  <rule id="101330" level="12">
+    <if_sid>91802</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(enablescriptblocklogging\s+(-value\s+)?(0|\$false)\b|enablescriptblocklogging.{0,40}/d\s+0\b|remove-item(property)?\b.*scriptblocklogging)</field>
+    <description>PowerShell Script Block Logging disabled or removed on $(win.system.computer)</description>
+    <mitre>
+      <id>T1562.002</id>
+    </mitre>
+  </rule>
+
+</group>

@@ -1,0 +1,18 @@
+<!-- Exercise 16: added to the Windows agent's ossec.conf
+     (C:\Program Files (x86)\ossec-agent\ossec.conf, inside <ossec_config>,
+     after the Sysmon localfile block). Restart the agent afterwards:
+       Restart-Service WazuhSvc   (then Start-Service WazuhSvc if it stays Stopped)
+
+     Requires PowerShell Script Block Logging on the endpoint (Admin PowerShell):
+       $key = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging'
+       New-Item -Path $key -Force | Out-Null
+       Set-ItemProperty -Path $key -Name EnableScriptBlockLogging -Value 1 -Type DWord
+
+     The query keeps only Event 4104 (script block text); the other events in this
+     channel (4100, 40961, 40962 ...) are not forwarded. Windows PowerShell 5.1 only:
+     PowerShell 7 writes to "PowerShell Core/Operational", which is not collected. -->
+<localfile>
+  <location>Microsoft-Windows-PowerShell/Operational</location>
+  <log_format>eventchannel</log_format>
+  <query>Event/System[EventID=4104]</query>
+</localfile>

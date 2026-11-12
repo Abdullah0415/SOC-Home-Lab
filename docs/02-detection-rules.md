@@ -25,6 +25,11 @@ The deployable rule file is [`rules/local_rules.xml`](../rules/local_rules.xml),
 | 101200 | 10 | Sudo run by a **non-admin** login user | child of 80792 (audit command), exe `/sudo$`, auid not `^1000$` | auditd execve | T1548.003 Sudo and Sudo Caching | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
 | 101210 | 12 | `/etc/shadow` read attempt (allowed or denied) | child of 80784, key `audit-wazuh-r`, exe not unix_chkpwd / sshd-session / systemd-executor / Wazuh / sudo | auditd file watch | T1003.008 /etc/passwd and /etc/shadow | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
 | 101220 | 12 | Sudoers file created, modified, chmod or deleted | child of 80780–80782, 80786–80788, 80790, 80791, key `audit-wazuh-w` | auditd file watch | T1548.003 Sudo and Sudo Caching | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) |
+| 101300 | 12 | Encoded PowerShell command (`-e`, `-ec`, `-enc`, `-EncodedCommand`), **any parent** | child of 61603, 92027, 92032, 92057; PowerShell image + encoded flag + 20+ base64 characters | Sysmon 1 | T1059.001 PowerShell, T1027.010 Command Obfuscation | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
+| 101310 | 12 | Download cradle in a PowerShell script block | child of 91802, 91837; `DownloadString`, `Net.WebClient`, `Invoke-WebRequest`, `iwr`, `Start-BitsTransfer` | PowerShell 4104 | T1059.001, T1105 Ingress Tool Transfer | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
+| 101315 | 8 | Full-spelling `Invoke-Expression` (built-in 91837 searches for the typo `Invoke-Expresion`) | child of 91802 | PowerShell 4104 | T1059.001 PowerShell | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
+| 101320 | 10 | Run-time decoding or code rebuilding | child of 91802, 91809, 91837; `FromBase64String`, `[char[]]`, `-bxor`, string concatenation | PowerShell 4104 | T1027.010, T1140 Deobfuscate/Decode | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
+| 101330 | 12 | Script Block Logging disabled or removed | child of 91802; `EnableScriptBlockLogging` set to 0 / `$false`, `reg ... /d 0`, or the key removed | PowerShell 4104 | T1562.002 Disable Windows Event Logging | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
 
 ## Response visibility rule
 
@@ -62,11 +67,15 @@ Level 0 means "match, but do not alert". Both rules are deliberately narrow and 
 | Discovery | T1033 System Owner/User Discovery | 100200 |
 | Lateral Movement | T1021 Remote Services | 100500 |
 | Lateral Movement | T1021.001 Remote Desktop Protocol | 101000, 101010 |
-| Command and Control | T1105 Ingress Tool Transfer | 100600 |
+| Command and Control | T1105 Ingress Tool Transfer | 100600, 101310 |
 | Defense Evasion | T1070.001 Clear Windows Event Logs | 100930 |
 | Impact | T1565.001 Stored Data Manipulation | 100900 |
 | Privilege Escalation | T1548.003 Sudo and Sudo Caching | 101200, 101220 |
 | Credential Access | T1003.008 /etc/passwd and /etc/shadow | 101210 |
+| Execution | T1059.001 PowerShell | 101300, 101310, 101315 |
+| Defense Evasion | T1027.010 Command Obfuscation | 101300, 101320 |
+| Defense Evasion | T1140 Deobfuscate/Decode Files or Information | 101320 |
+| Defense Evasion | T1562.002 Disable Windows Event Logging | 101330 |
 
 ## Built-in coverage verified (no custom rule needed)
 
@@ -80,6 +89,8 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | SSH brute force (Linux) | 5763 / 2502 | 10 | Adequate |
 | Wazuh agent stopped | 506 | 3 | Correct MITRE (T1562.001) but severity too low, tuning planned |
 | Successful SSH login | 5715 | 3 | Adequate as a signal; correlated by 40112 / 100800 |
+| `FromBase64String` in a PowerShell script block | 91809 | 10 | Adequate; 101320 adds `[char[]]`, `-bxor` and string concatenation |
+| `-EncodedCommand` / `-e` with a PowerShell parent | 92057 | 12 | Adequate for those cases only; see built-in rule defects below |
 
 ## Documented gaps (no rule possible yet)
 
@@ -89,6 +100,8 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Events written while the Wazuh agent is stopped | The agent does not replay missed EventChannel events | Treat agent stop as a high-severity incident |
 | Stopping Sysmon | Not possible: Sysmon64 is self-protected (denied even as SYSTEM) | Positive finding, no rule needed |
 | Windows auto-block on logon alerts | Stock response scripts read only `srcip`, which Windows EventChannel alerts do not fill | Custom response script reading `win.eventdata.ipAddress`, or block at the network edge |
+| PowerShell 7 (`pwsh.exe`) script blocks | They are written to `PowerShell Core/Operational`, which the agent does not collect | Add a second `<localfile>` for that channel |
+| Registry change that disables Script Block Logging | The Sysmon config does not watch the key (no Event 13); 101330 relies on the disabling command appearing in 4104 | Add the key to the Sysmon config |
 | First SSH login of a newly created user not alerted (seen twice: Exercises 14 and 15) | The `Accepted password` line is in journald, but logcollector logs "Journald timestamp was refreshed due to rotation" within one second and skips it; later logins alert normally | Test the per-user journal file hypothesis in Exercise 18; until then, check the source log after any auto-block or new account |
 
 ## Closed gaps
@@ -96,10 +109,23 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Gap | Found in | Closed in | How |
 |---|---|---|---|
 | Denied `sudo` by a non-sudoer not logged (Ubuntu 26.04, sudo-rs) | [9](../README.md#exercise-9-linux-ssh-brute-force-and-successful-login) | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) | auditd records the sudo execve and the `/etc/shadow` open at kernel level; rules 101200 (L10) and 101210 (L12) |
+| Encoded PowerShell visible only as base64; `-enc` scored level 4 and a `cmd.exe` launch level 3 | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | Script Block Logging (4104) shows the decoded code; 101300 covers every spelling and parent (L12) |
+| No detection for download cradles, `[char[]]` / string obfuscation or full `Invoke-Expression` | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | Rules 101310, 101315, 101320 on the decoded script block |
+
+## Built-in rule defects found
+
+Found by testing attack variants and then reading the vendor rule files (Exercise 16).
+
+| Rule | Defect | Effect | Handled by |
+|---|---|---|---|
+| 92057 | Spelling list `encodedcommand\|e\|ea\|ec\|encodeda\|encode\|en\|enco` has no `enc`; parent must be `powershell.exe` | `-enc` and any non-PowerShell parent are missed | 101300 |
+| 91837 | Regex and description say `Invoke-Expresion` (typo) | Full `Invoke-Expression` never matches | 101315 |
+| 91823 (L14) | `(?i)(ComputerName\|Cn)` with no word boundary | Level 14 false positive on a built-in Windows script | To tune in Exercise 18 |
 
 ## Rule-writing conventions
 
 - Custom detections use IDs **100100 to 101999**; every rule has a MITRE mapping and a description with the key field values (`$(file)`, `$(win.eventdata.ipAddress)`, ...).
 - A rule that raises a built-in alert is written as a **child** (`if_sid`), because Wazuh evaluates rules as a tree: once an event matches a parent, only that parent's children are checked.
 - Rule IDs and field names are confirmed on live events first. Rule XML uses `win.eventdata.*` and `file`, not the dashboard names `data.win.eventdata.*` and `syscheck.path`.
+- When a built-in sibling rule can match the same event first, the custom rule lists that rule in `if_sid` too, so it is still evaluated (Exercise 16).
 - Every change is validated with `wazuh-analysisd -t` before the manager is restarted, and every rule is proven by a screenshot of it firing.

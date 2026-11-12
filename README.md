@@ -26,10 +26,10 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 > **At a glance**
-> - **14 exercises**, from brute-force detection to defense evasion, crash root-cause analysis and automated response
-> - **12 custom detection rules** (levels 6 to 14), **1 response-visibility rule** and **2 false-positive suppression rules**
-> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001
-> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response)
+> - **16 exercises**, from brute-force detection to defense evasion, crash root-cause analysis, automated response, Linux privilege escalation and PowerShell attack detection
+> - **20 custom detection rules** (levels 6 to 14), **1 response-visibility rule** and **2 false-positive suppression rules**
+> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001, T1548.003, T1003.008, T1059.001, T1027.010, T1140, T1562.002
+> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response), Linux auditd, PowerShell Script Block Logging, auditing built-in detection rules
 
 ## 📚 Documentation
 
@@ -40,7 +40,7 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 | 🎓 [Lessons learned](docs/03-lessons-learned.md) | What broke, what misled me, and what I do differently now |
 | 🧾 [Playbooks](playbooks/) | Investigation checklists for the alerts this lab produces |
 | ⚙️ [Rules](rules/) | The deployable `local_rules.xml` running on the Wazuh manager |
-| 🛡️ [Config](config/) | Active Response configuration (automated blocking) |
+| 🛡️ [Config](config/) | Active Response, auditd and PowerShell log collection configuration |
 | 📈 [TryHackMe progress](docs/tryhackme-progress.md) | Rooms completed and how they connect to the lab |
 
 <details>
@@ -60,10 +60,11 @@ SOC-Home-Lab/
 ├── config/
 │   ├── active-response.xml   Active Response blocks from ossec.conf
 │   ├── auditd-wazuh-lab.rules  Linux audit rules (Exercise 15)
-│   └── auditd-localfile.xml   audit.log input for Wazuh
-├── playbooks/                PB-01 … PB-06 investigation checklists
+│   ├── auditd-localfile.xml   audit.log input for Wazuh
+│   └── powershell-localfile.xml  PowerShell 4104 input for the agent (Exercise 16)
+├── playbooks/                PB-01 … PB-07 investigation checklists
 └── screenshots/
-    └── Exercise-01 … Exercise-15
+    └── Exercise-01 … Exercise-16
 ```
 
 </details>
@@ -88,6 +89,7 @@ SOC-Home-Lab/
 - [Exercise 13: RDP Brute Force and Successful Remote Logon](#exercise-13-rdp-brute-force-and-successful-remote-logon)
 - [Exercise 14: Automated Response with Wazuh Active Response](#exercise-14-automated-response-with-wazuh-active-response)
 - [Exercise 15: Linux Privilege Escalation Visibility with auditd](#exercise-15-linux-privilege-escalation-visibility-with-auditd)
+- [Exercise 16: PowerShell Attacks – Script Block Logging and Encoded Commands](#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands)
 - [What I learned](#-what-i-learned)
 - [Next steps](#-next-steps)
 
@@ -135,6 +137,11 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 101200 | 15 | sudo run by a non-admin login user (auditd) | T1548.003 Sudo and Sudo Caching | 10 |
 | 101210 | 15 | /etc/shadow read attempt by a login user (auditd) | T1003.008 /etc/passwd and /etc/shadow | 12 |
 | 101220 | 15 | Sudoers file created, modified, chmod or deleted (auditd) | T1548.003 Sudo and Sudo Caching | 12 |
+| 101300 | 16 | Encoded PowerShell command (`-e`, `-ec`, `-enc`, `-EncodedCommand`), any parent | T1059.001 PowerShell, T1027.010 Command Obfuscation | 12 |
+| 101310 | 16 | PowerShell download cradle in a script block (Event 4104) | T1059.001, T1105 Ingress Tool Transfer | 12 |
+| 101315 | 16 | Full-spelling `Invoke-Expression` in a script block (built-in 91837 has a typo) | T1059.001 PowerShell | 8 |
+| 101320 | 16 | Run-time decoding or code rebuilding (FromBase64String, `[char[]]`, `-bxor`, string concatenation) | T1027.010, T1140 Deobfuscate/Decode | 10 |
+| 101330 | 16 | PowerShell Script Block Logging disabled or removed | T1562.002 Disable Windows Event Logging | 12 |
 
 Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
@@ -1424,6 +1431,230 @@ The execve rule produced **4,341** command alerts in about 35 minutes. **89%** o
 
 ---
 
+## Exercise 16: PowerShell Attacks – Script Block Logging and Encoded Commands
+
+**Goal:** detect the most common attacker tool on Windows. Attackers hide PowerShell code with `-EncodedCommand` (base64), download-and-run one-liners and run-time obfuscation, so the process command line often shows only gibberish. I enabled PowerShell Script Block Logging (Event 4104), which records the code **after** it is decoded, measured what Wazuh's built-in rules really catch, and wrote five custom rules for the gaps.
+
+**MITRE:** T1059.001 PowerShell · T1027.010 Command Obfuscation · T1105 Ingress Tool Transfer · T1140 Deobfuscate/Decode · T1562.002 Disable Windows Event Logging
+**Hosts:** SOC-Win11 (victim) · SOC-Wazuh (10.10.10.10, manager) · SOC-Kali (10.10.10.130, web server for the download test)
+All payloads were harmless (`Write-Output`, `whoami`, `hostname`).
+
+### 1. Before: proving the gap
+A base64 command (`powershell.exe -NoProfile -EncodedCommand VwBy...`) raised built-in rule **92057** (level 12), but the alert showed only the base64 string. The analyst could not see that it ran `whoami` without decoding it by hand, and PowerShell itself was not logging anything.
+
+### 2. Script Block Logging: seeing the decoded code
+- Registry policy `HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging` → `EnableScriptBlockLogging = 1` (Windows PowerShell 5.1).
+- Agent `ossec.conf`: a `<localfile>` for `Microsoft-Windows-PowerShell/Operational` that keeps only Event 4104 ([`config/powershell-localfile.xml`](config/powershell-localfile.xml)).
+
+Event 4104 now shows the decoded code in plain text: `Write-Output "Exercise16 encoded test"; whoami`.
+
+**Side finding:** the first 4104 alerts were not an attack. They were the Wazuh agent's own SCA scan (`secedit /export ... ResetLockoutCount`) running after the agent restart (rule 91816).
+
+### 3. Investigation: what the built-in rules catch
+Before writing any rule I ran three attack tests and recorded what the built-in ruleset did.
+
+| Test | What ran | Built-in result |
+|---|---|---|
+| A | `-EncodedCommand` (parent powershell.exe) | 92057, level 12 ✅ |
+| A | `-e` (parent powershell.exe) | 92057, level 12 ✅ |
+| A | `-enc` (parent powershell.exe) | only 92027, level 4 ❌ |
+| A | `cmd.exe /c powershell -enc ...` | only 92032, level 3 ❌ |
+| B | `IEX (New-Object Net.WebClient).DownloadString(...)` from Kali | only 91837, level 4 (matched "IEX", not the download) |
+| B | `Invoke-Expression (... Invoke-WebRequest ...)` | **no alert** ❌ |
+| C | `[Convert]::FromBase64String('d2hvYW1p')` | 91809, level 10 ✅ |
+| C | `Invoke-Expression $s` | **no alert** ❌ |
+| C | `& ('who' + 'ami')` | **no alert** ❌ |
+| C | `Invoke-Expression ([char[]](119,104,111,97,109,105) -join '')` | **no alert** ❌ |
+
+Reading the rule files (`0915-win-powershell_rules.xml` and the Sysmon rules) explained every miss:
+
+- **92057** lists the flag spellings `encodedcommand|e|ea|ec|encodeda|encode|en|enco` but **not `enc`**, the most common attacker spelling, and it only fires when the parent is `powershell.exe`.
+- **91837** searches for `Invoke-Expresion` (missing an "s") in both its regex and description, so the full `Invoke-Expression` spelling never matches.
+- There is **no built-in rule** for download cradles (`DownloadString`, `Net.WebClient`, `Invoke-WebRequest`) or for `[char[]]` / string-concatenation obfuscation.
+- **91823** (level 14) matches `(?i)(ComputerName|Cn)` without a word boundary, so it fired on a built-in Windows maintenance script: a false positive for the tuning exercise.
+- The PowerShell rules match the **channel**, not Event ID 4104: 91801 (channel) → **91802** (any script block), both level 0. Sysmon Event 1 base rule: **61603**.
+
+### 4. Custom rules
+
+| Rule | Parent | Logic | Level | MITRE |
+|---|---|---|---|---|
+| 101300 | 61603, 92027, 92032, 92057 | PowerShell image + `-e` / `-ec` / `-en*` flag + 20+ base64 characters | 12 | T1059.001, T1027.010 |
+| 101310 | 91802, 91837 | script block contains a download method | 12 | T1059.001, T1105 |
+| 101315 | 91802 | script block contains the full `Invoke-Expression` | 8 | T1059.001 |
+| 101320 | 91802, 91809, 91837 | `FromBase64String`, `[char[]]`, `-bxor` or string concatenation | 10 | T1027.010, T1140 |
+| 101330 | 91802 | Script Block Logging set to 0 / `$false`, `reg ... /d 0` or the key removed | 12 | T1562.002 |
+
+```xml
+<group name="local,windows,powershell,">
+
+  <rule id="101300" level="12">
+    <if_sid>61603, 92027, 92032, 92057</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(powershell|pwsh)\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)\s[-/](e|ec|en[a-z]*)\s+[A-Za-z0-9+/=]{20,}</field>
+    <description>Encoded PowerShell command started by $(win.eventdata.user) (parent: $(win.eventdata.parentImage))</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1027.010</id>
+    </mitre>
+  </rule>
+
+  <rule id="101310" level="12">
+    <if_sid>91802, 91837</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(downloadstring|downloadfile|downloaddata|net\.webclient|invoke-webrequest|\biwr\b|start-bitstransfer)</field>
+    <description>PowerShell script block downloads content (possible download cradle) on $(win.system.computer)</description>
+    <mitre>
+      <id>T1059.001</id>
+      <id>T1105</id>
+    </mitre>
+  </rule>
+
+  <rule id="101320" level="10">
+    <if_sid>91802, 91809, 91837</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(frombase64string|\[char\[\]\]|-bxor|\(\s*['"][\w-]+['"]\s*\+\s*['"])</field>
+    <description>PowerShell script block decodes or rebuilds code at run time on $(win.system.computer)</description>
+    <mitre>
+      <id>T1027.010</id>
+      <id>T1140</id>
+    </mitre>
+  </rule>
+
+  <rule id="101315" level="8">
+    <if_sid>91802</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)invoke-expression</field>
+    <description>PowerShell script block runs a string as code with Invoke-Expression on $(win.system.computer) (full spelling missed by built-in 91837)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+</group>
+
+<group name="local,windows,powershell,defense_evasion,">
+
+  <rule id="101330" level="12">
+    <if_sid>91802</if_sid>
+    <field name="win.eventdata.scriptBlockText" type="pcre2">(?i)(enablescriptblocklogging\s+(-value\s+)?(0|\$false)\b|enablescriptblocklogging.{0,40}/d\s+0\b|remove-item(property)?\b.*scriptblocklogging)</field>
+    <description>PowerShell Script Block Logging disabled or removed on $(win.system.computer)</description>
+    <mitre>
+      <id>T1562.002</id>
+    </mitre>
+  </rule>
+
+</group>
+```
+
+**Design notes**
+- **Sibling rules compete.** When two children of the same parent match one event, Wazuh reports only one. Each custom rule is therefore also a child of the built-in rule that could match first (92027/92032/92057, 91809/91837), so it is still evaluated when the built-in rule wins.
+- **101300** needs 20+ base64 characters after the flag, so a normal flag starting with "e" (for example `-ExecutionPolicy`) does not match. PowerShell accepts any short form of `-EncodedCommand`, so `en[a-z]*` covers `-en`, `-enc`, `-encod` and the full word.
+- **101310 to 101330** read the decoded script block (4104), so base64 on the command line does not hide them.
+- **Production caveat:** real admin scripts also use `Invoke-WebRequest` and `Invoke-Expression`. In a company these rules would exclude known script paths or signed scripts.
+
+### 5. Result
+
+| Check | Result |
+|---|---|
+| Test A: all four encoded launches, **including the `cmd.exe` parent** | 101300, level 12 (4 / 4) |
+| Test B: both download cradles | 101310, level 12 (2 / 2) |
+| Test C: `FromBase64String`, `('who' + 'ami')`, `[char[]]` | 101320, level 10 (3 / 3) |
+| Test C: `Invoke-Expression $s` | 101315, level 8 (1 / 1) |
+| Negative test: `Get-Process`, `Get-Date` | **no** custom alert |
+
+The 101300 alert now names the user and parent process: *Encoded PowerShell command started by DESKTOP-RUN6GAL\socadmin (parent: C:\Windows\System32\cmd.exe)*, the same launch the built-in rule scored at level 3. When one script block matched two custom rules, the higher-level rule was reported (101310 and 101320 over 101315), as designed.
+
+**Defense evasion (101330):** an attacker who knows about 4104 turns it off first. Setting `EnableScriptBlockLogging` to 0 produced **no Sysmon Event 13** (the Sysmon config does not watch this key). But PowerShell reads the setting only when a process starts, so the running session kept logging and the `Set-ItemProperty ... -Value 0` command recorded itself in 4104. Rule 101330 fired once (level 12, T1562.002) and stayed silent when logging was switched back on.
+
+### 6. Noise: an honest finding
+On the test day the endpoint wrote **243** Event 4104 records; only **22** became alerts (about 9%). The rest, such as PowerShell's own `prompt` blocks, matched only level 0 rules. Of the 22 alerts, **12 were noise** from three sources: the Wazuh agent's own SCA scan (91816, 8 alerts), the 91823 false positive (2) and Windows maintenance scripts (91820, 2). All three are on the tuning list for Exercise 18.
+
+### Screenshots
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-04b.png" width="100%"><br><sub>Before: the built-in alert shows only base64</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-06.png" width="100%"><br><sub>After: Event 4104 shows the decoded code</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-14.png" width="100%"><br><sub>What the built-in rules caught (and missed)</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-R3.png" width="100%"><br><sub>Typo in built-in rule 91837: "Invoke-Expresion"</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-17.png" width="100%"><br><sub>Custom rules firing: 10 / 10</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-18.png" width="100%"><br><sub>MITRE view: T1059.001, T1027.010, T1105, T1140</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-15a.png" width="100%"><br><sub>101300: cmd.exe parent now level 12</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-19d.png" width="100%"><br><sub>101330: Script Block Logging turned off</sub></td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-01a.png" width="100%"><br><sub>Manager rules backup, Exercise 14 responses still disabled</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-01b.png" width="100%"><br><sub>Agent configuration backup</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-02.png" width="100%"><br><sub>Before: Script Block Logging off, PowerShell log not collected</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-03.png" width="100%"><br><sub>Harmless encoded test command</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-04a.png" width="100%"><br><sub>Built-in 92057: command line and parent</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-05.png" width="100%"><br><sub>Script Block Logging enabled</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-07.png" width="100%"><br><sub>Agent localfile for Event 4104</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-08.png" width="100%"><br><sub>Agent reading the PowerShell channel</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-09a.png" width="100%"><br><sub>First 4104 alerts in Wazuh</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-09b.png" width="100%"><br><sub>They were the Wazuh agent's own SCA scan</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-R1.png" width="100%"><br><sub>PowerShell parent rules 91801 / 91802 and 91809</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-R2.png" width="100%"><br><sub>No built-in download-cradle rule</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-R4.png" width="100%"><br><sub>92057 without "enc", 91823 with an unanchored "Cn"</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-10.png" width="100%"><br><sub>Test A: encoded command spellings and cmd.exe parent</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-11.png" width="100%"><br><sub>Test B: Kali web server log</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-12.png" width="100%"><br><sub>Test B: download cradle output</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-13.png" width="100%"><br><sub>Test C: decoding and obfuscation</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-16.png" width="100%"><br><sub>Rules added and validated</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-15b.png" width="100%"><br><sub>101310 alert details</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-15c.png" width="100%"><br><sub>101320 alert details</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-19a.png" width="100%"><br><sub>No Sysmon Event 13 for the registry change</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-19b.png" width="100%"><br><sub>4104 recorded the disabling command itself</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-19c.png" width="100%"><br><sub>Rule 101330 validated</sub></td>
+<td><img src="screenshots/Exercise-16/EX16-20.png" width="100%"><br><sub>Noise: 22 alerts by rule and script</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-16/EX16-21.png" width="100%"><br><sub>Final state: logging on, 243 script blocks today</sub></td>
+<td></td>
+</tr>
+</table>
+
+</details>
+
+### Key takeaways
+- Command-line logging cannot see inside encoded PowerShell. Script Block Logging records the code after decoding, which is what an analyst needs.
+- A built-in rule existing is not the same as coverage. Testing every spelling and launch path found a missing `enc` in 92057, a typo in 91837 and no rule at all for download cradles.
+- Disabling logging is not silent: a running PowerShell session keeps logging, so the disabling command records itself.
+- Every new log source adds noise, even from the security tool itself. Measure it before trusting the alert count.
+
+---
+
 ## 🎓 What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
@@ -1437,6 +1668,8 @@ The execve rule produced **4,341** command alerts in about 35 minutes. **89%** o
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
 - **Troubleshooting:** "no alerts" is not "no activity"; verify the log pipeline, read service logs, and fix a manager that will not start
 - **Automated response:** Wazuh Active Response contains an attacker in seconds, but containment is not prevention, and a response can fail silently when the field it needs (`srcip`) is missing
+- **PowerShell visibility:** Script Block Logging (Event 4104) shows the decoded code behind `-EncodedCommand`, download cradles and run-time obfuscation; detections should read the script block, not only the command line
+- **Auditing the vendor ruleset:** testing every variant against built-in rules found a missing `enc` spelling (92057), a typo (91837) and an unanchored regex causing a level 14 false positive (91823)
 - **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
 
 The detailed version, with what happened and what I changed in each case, is in [docs/03-lessons-learned.md](docs/03-lessons-learned.md).
@@ -1446,7 +1679,8 @@ The detailed version, with what happened and what I changed in each case, is in 
 - Tune a child of rule 506 to raise "Wazuh agent stopped" to high severity
 - Close the crash/shutdown visibility gap with agent-side bookmark persistence or host/hypervisor-level monitoring
 - Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
-- Enable auditd to capture sudo execution on Linux
 - Custom Windows active-response script that reads `win.eventdata.ipAddress`, so RDP brute force can be blocked too
 - Confirm the journald-rotation event loss with archives enabled during a burst
+- Tune PowerShell 4104 noise: the Wazuh agent's own SCA scan (91816), the 91823 false positive and Windows maintenance scripts (91820)
+- Add the Script Block Logging registry key to the Sysmon config (Event 13) and collect PowerShell 7 (`PowerShell Core/Operational`) logs
 - Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab

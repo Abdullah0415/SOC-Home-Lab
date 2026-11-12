@@ -41,19 +41,23 @@ flowchart LR
         APP["Application log"]
         SMON["Sysmon/Operational<br/>(1, 3, 11, 13)"]
         FIM["FIM / syscheck<br/>(whodata)"]
+        PSL["PowerShell/Operational<br/>(4104 script blocks)"]
         AG["Wazuh agent"]
         SEC --> AG
         SYS --> AG
         APP --> AG
         SMON --> AG
         FIM --> AG
+        PSL --> AG
     end
     subgraph SIEM["SOC-Wazuh"]
         AUTH["/var/log/auth.log<br/>(local SSH, sudo)"]
+        AUD["/var/log/audit/audit.log<br/>(auditd)"]
         MGR["wazuh-analysisd<br/>decoders + rules<br/>(built-in + local_rules.xml)"]
         IDX["Indexer"]
         DASH["Dashboard"]
         AUTH --> MGR
+        AUD --> MGR
         MGR -- "alerts.json" --> IDX --> DASH
     end
     AG -- "TCP 1514" --> MGR
@@ -68,8 +72,10 @@ flowchart LR
 | Sysmon | Process creation (1), network connection (3), file create (11), registry (13) | Exercises 5, 6, 8, 10 |
 | FIM (whodata, `report_changes`) | `C:\FIM-Test` (sensitive Finance folder) and both Windows Startup folders | Exercise 10 |
 | Linux auth log (manager) | SSH logins, PAM, user and group changes | Exercises 3, 9 |
+| auditd (manager) | `execve` by login users, `/etc/shadow` reads, sudoers changes ([config](../config/auditd-wazuh-lab.rules)) | Exercise 15 |
+| PowerShell/Operational (endpoint) | Event 4104 only: decoded script blocks ([config](../config/powershell-localfile.xml)) | Exercise 16 |
 
-**Audit policy on the endpoint:** Logon auditing (Success and Failure) and File System auditing (Success, required by whodata). Account lockout threshold: 10 attempts.
+**Audit policy on the endpoint:** Logon auditing (Success and Failure) and File System auditing (Success, required by whodata). Account lockout threshold: 10 attempts. PowerShell Script Block Logging is enabled by policy (`HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging`, `EnableScriptBlockLogging = 1`) since Exercise 16.
 
 ## Operating notes
 
