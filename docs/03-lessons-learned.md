@@ -17,6 +17,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Context decides severity | The same FIM rule (level 7) fired for a routine file and for a sensitive Finance file | Raise severity by path, not by event type alone | 10 |
 | A built-in rule existing is not coverage | 92057 missed `-enc` and any non-PowerShell parent; 91837 has a typo (`Invoke-Expresion`) | Test every variant, then read the vendor rule to explain each miss | 16 |
 | Sibling rules compete | Two children of the same parent can match one event, but only one is reported | List the competing built-in rule in `if_sid` as well; the higher-level custom rule won in the re-test | 16 |
+| A threshold is a blind spot | 60204 needs 8 failures in 240 s; a 4-guess attack stayed at level 5–6 and broke the 101010 chain | Correlate "failure followed by success" (101020) instead of only counting failures | 17 |
+| Test a rule with more than one tool | 100300 was written for `reg.exe`; a PowerShell Run key was logged by Sysmon but raised no custom alert | Recreate each technique with a second tool before trusting the rule | 17 |
 | Rules may match the channel, not the Event ID | Searching the ruleset for "4104" found nothing; the PowerShell parents are 91801 → 91802 (level 0) | Find the parent from a live alert's rule ID, then read its file | 16 |
 
 ## Tuning
@@ -26,6 +28,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Suppress the pattern, not the rule | Not every 92213 alert was the PowerShell policy-test file | Level 0 child rules matching the exact process **and** file / command line / parent | 8 |
 | A suppression needs a negative test | Proved `sdbinst -m -bg` from an admin shell still alerts after rule 100710 | Every suppression ships with a test showing real activity still alerts | 8 |
 | Your own tools make noise | 8 of the first 4104 alerts were the Wazuh agent's SCA scan (`secedit /export`) | Identify the source of every new alert before tuning | 16 |
+| Severity is not priority | The only level 15 alerts in the intrusion were Edge unpacking a DLL; the attacker's entry was level 5–6 | Verify every high alert and look below level 10 around the first sign of an attack | 17 |
+| Group alerts before reading them | 105 alerts in 20 minutes, 68% noise; grouped by rule they became 24 lines | Summarise by rule (first, last, count) before reading one by one | 17 |
 | Measure before trusting the count | 243 script blocks → 22 alerts, 12 of them noise from three known sources | Count by rule and script text after enabling any new log source | 16 |
 
 ## Log pipeline and visibility
@@ -38,6 +42,8 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Rule gap vs visibility gap | Crash events (41, 6008) never reached the manager at all | Do not ship rules for data that never arrives; document the gap instead | 11 |
 | Same Event ID, different meaning | Event 1001 exists in System (bugcheck) and Application (Windows Error Reporting) | Filter by channel and provider, not just Event ID | 10 |
 | Some systems do not log what you expect | sudo-rs on Ubuntu 26.04 did not log denied `sudo` attempts | Verify the log exists before planning a detection; auditd as a fix | 9 |
+| Local logs are not durable evidence | The cleared 20 MB Security log refilled in ~18 minutes and overwrote its own Event 1102 | Treat the SIEM copy as the evidence; size endpoint logs for days, not minutes | 17 |
+| Clocks drift | The endpoint was ~37 s ahead of the manager and Kali | Build timelines on one clock (the manager) and note the skew | 17 |
 | Command lines hide encoded code | Sysmon showed only `-EncodedCommand VwBy...` | Collect PowerShell 4104, which records the decoded script block | 16 |
 | Policy changes apply to new processes | After setting Script Block Logging to 0, the running session kept logging and recorded the change | Test logging changes in a new window; a running session is evidence | 16 |
 
@@ -97,3 +103,11 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 - **Turning logging off records itself.** The setting is read when PowerShell starts, so the disabling command landed in 4104 even though Sysmon did not see the registry change.
 - **New visibility, new noise.** 243 script blocks, 22 alerts, 12 of them noise from the SCA scan, Windows maintenance scripts and a loose built-in regex.
 - **Kali's clock was in another timezone** than the Windows VM; convert every time before building a timeline.
+
+## Exercise 17: Full attack chain and incident report
+- **Investigate from the alert, not from the attacker's notes.** The first high alert was not the beginning of the attack; the real entry (4 failures and an NTLM success in the same second) was at level 5–6.
+- **One layer can hide a gap in another.** The PowerShell Run key was caught only by a 4104 rule. If the attacker had turned off Script Block Logging first, the Sysmon event would have raised nothing.
+- **Correlation turns alerts into an incident.** Rule 101400 links a successful brute-force login to any persistence within an hour and raises one level 15 alert instead of several level 12 ones.
+- **A regex parent can be wider than it looks.** Built-in 92300 also matches `RunNotification`, written by `sihost.exe` at every logon; the fixed 100300 requires `Run\` or `RunOnce\`.
+- **Hidden windows hide your own console.** `-w hidden` in a classic PowerShell window hid the window that launched it: expected attacker behaviour, not a crash.
+- **The SIEM is the evidence.** The endpoint lost its logs twice (attacker, then rollover); every logon and account change was still in Wazuh.

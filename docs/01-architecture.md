@@ -84,5 +84,6 @@ flowchart LR
 - **Vulnerability detection** is disabled: its feed download failure kept crashing `wazuh-modulesd` and broke the dashboard API. It is not needed for attack detection in this lab.
 - **Manager restarts:** on the slow HDD, `systemctl restart` can time out and leave the manager half-stopped. The reliable sequence is `wazuh-control stop`, remove any leftover `/var/ossec/var/start-script-lock` directory, then `wazuh-control start`.
 - **Snapshots** are taken on SOC-Win11 and SOC-Wazuh at the end of every exercise, so each exercise can be reproduced from a known state.
-- **Time:** server logs are UTC, the dashboard shows local time (UTC+2). Timelines always state the timezone.
+- **Time:** server logs are UTC, the dashboard shows local time (UTC+2). Timelines always state the timezone. The endpoint clock runs ~37 s ahead of the manager (Exercise 17), so timelines use manager time.
+- **Endpoint log retention:** the Windows Security log is capped at 20 MB, and File System auditing (for whodata) fills it in under 20 minutes. Wazuh is the durable copy; the agent's default query does not forward 4656/4658.
 - **Isolation:** the lab network is NAT only. Test users (`testuser`, `rdptest`) and test files are created for an exercise and removed in its cleanup step, so no real credentials appear anywhere.

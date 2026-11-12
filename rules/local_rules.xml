@@ -40,8 +40,8 @@
 
 <group name="local,sysmon,windows,">
 <rule id="100300" level="12">
-<if_sid>92302</if_sid>
-<field name="win.eventdata.targetObject" type="pcre2">(?i)CurrentVersion\\+Run</field>
+<if_sid>92300, 92302</if_sid>
+<field name="win.eventdata.targetObject" type="pcre2">(?i)CurrentVersion\\+Run(Once)?\\+</field>
 <description>Custom SOC rule: Run key modified - possible persistence</description>
 <mitre>
 <id>T1547.001</id>
@@ -161,7 +161,7 @@
     <same_field>win.eventdata.ipAddress</same_field>
     <description>RDP brute force succeeded: $(win.eventdata.targetUserName) logged in from $(win.eventdata.ipAddress) after repeated failed logons</description>
     <mitre><id>T1110.001</id><id>T1021.001</id><id>T1078</id></mitre>
-    <group>authentication_success,</group>
+    <group>authentication_success,rdp_bruteforce_success,</group>
   </rule>
 
 </group>
@@ -264,6 +264,31 @@
     <mitre>
       <id>T1562.002</id>
     </mitre>
+  </rule>
+
+</group>
+
+<!-- Exercise 17: RDP login after a few failed logons + incident correlation -->
+<group name="local,windows,authentication,">
+
+  <rule id="101020" level="12" timeframe="300">
+    <if_sid>101000</if_sid>
+    <if_matched_sid>60122</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <description>RDP logon by $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress) after failed logons from the same IP (below the 8-failure threshold of 60204)</description>
+    <mitre><id>T1110.001</id><id>T1021.001</id><id>T1078</id></mitre>
+    <group>authentication_success,rdp_bruteforce_success,</group>
+  </rule>
+
+</group>
+
+<group name="local,windows,correlation,">
+
+  <rule id="101400" level="15" timeframe="3600">
+    <if_sid>100100, 100300, 100400, 91844</if_sid>
+    <if_matched_group>rdp_bruteforce_success</if_matched_group>
+    <description>Incident: persistence created within 1 hour of a successful RDP password-guessing login on $(win.system.computer)</description>
+    <mitre><id>T1110.001</id><id>T1547.001</id><id>T1053.005</id><id>T1136.001</id></mitre>
   </rule>
 
 </group>

@@ -1,0 +1,105 @@
+07:47:04 60122 5 T1531 Logon Failure - Unknown user or bad password
+07:47:04 60122 5 T1531 Logon Failure - Unknown user or bad password
+07:47:04 60122 5 T1531 Logon Failure - Unknown user or bad password
+07:47:04 60122 5 T1531 Logon Failure - Unknown user or bad password
+07:47:04 92652 6 T1550.002,T1078.002 Successful Remote Logon Detected - User:\rdptest - NTLM authentication, possible pass-the-
+07:47:06 61632 12 T1055 Sysmon - Suspicious Process - smss.exe
+07:47:18 92217 6 T1570 Executable dropped in Windows root folder
+07:47:19 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{ECDF3385-E359-4B7F-83E1-DAFA
+07:47:20 92217 6 T1570 Executable dropped in Windows root folder
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{AF8BB291-92E7-47DB-8A10-7CF2
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:26 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:27 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:47:45 100500 12 T1021 Custom SOC rule: network logon (type 3) - possible lateral movement
+07:47:46 61632 12 T1055 Sysmon - Suspicious Process - smss.exe
+07:47:46 101000 6 T1021.001 RDP remote interactive logon: rdptest from 10.10.10.130
+07:47:46 101000 6 T1021.001 RDP remote interactive logon: rdptest from 10.10.10.130
+07:48:09 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{62D38AA3-4E0B-4CB1-92DC-F75C
+07:48:10 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{3C73D6F2-3297-4568-9C7B-DA54
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{D46F105D-4AB6-46B9-BF5B-E972
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:15 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:16 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:16 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:16 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:48:26 61632 12 T1055 Sysmon - Suspicious Process - smss.exe
+07:48:35 60104 5  Windows audit failure event
+07:48:35 60104 5  Windows audit failure event
+07:48:36 60104 5  Windows audit failure event
+07:50:43 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{59BCE581-918F-45C0-AEF7-0BF2
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92217 6 T1570 Executable dropped in Windows root folder
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SoftwareDistribution\\Download\\6e77cdb7b
+07:50:50 92219 6 T1574.001,T1574.002 Possible DLL search order hijack by C:\\Windows\\SystemTemp\\{77AF84B5-AC61-4E6F-9F27-3B25
+07:51:02 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:51:20 100200 10 T1033 Custom SOC rule: whoami executed - possible host reconnaissance
+07:51:20 100200 10 T1033 Custom SOC rule: whoami executed - possible host reconnaissance
+07:51:28 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:52:52 101300 12 T1059.001,T1027.010 Encoded PowerShell command started by DESKTOP-RUN6GAL\\rdptest (parent: )
+07:56:02 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:56:02 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:56:04 101310 12 T1059.001,T1105 PowerShell script block downloads content (possible download cradle) on DESKTOP-RUN6GAL
+07:56:28 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:56:29 92200 6 T1059,T1105 Scripting file created under Windows Temp or User folder
+07:57:32 91844 12 T1547.001,T1059.001,T1112 Possible addition of new item to Windows startup registry
+07:57:32 92213 15 T1105 Executable file dropped in folder commonly used by malware
+07:57:33 100400 12 T1053.005 Custom SOC rule: scheduled task created - possible persistence
+07:57:33 60160 5 T1484 Domain Users Group Changed
+07:57:33 100100 12 T1136.001 Custom SOC rule: New Windows user created - possible backdoor
+07:57:33 60109 8 T1098 User account enabled or created
+07:57:33 60110 8 T1098 User account changed
+07:57:33 60170 5 T1484 Users Group Changed
+07:57:33 60154 12 T1484 Administrators Group Changed
+07:58:33 92213 15 T1105 Executable file dropped in folder commonly used by malware
+07:58:34 101330 12 T1562.002 PowerShell Script Block Logging disabled or removed on DESKTOP-RUN6GAL
+07:58:34 100930 12 T1070.001 Windows event log cleared (Security) - attacker clearing tracks (Event 1102)
+07:59:20 60775 5  WSearch was unavailable to handle a notification event.
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+07:59:28 92217 6 T1570 Executable dropped in Windows root folder
+08:02:25 92217 6 T1570 Executable dropped in Windows root folder
+08:05:15 92217 6 T1570 Executable dropped in Windows root folder

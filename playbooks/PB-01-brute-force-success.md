@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Triggers** | 100800 (SSH, L14), 101010 (RDP, L14), built-in 40112 (SSH, L12), 101100 (auto-block, L8) |
+| **Triggers** | 100800 (SSH, L14), 101010 (RDP, L14), 101020 (RDP after a few failures, L12), built-in 40112 (SSH, L12), 101100 (auto-block, L8) |
 | **MITRE** | T1110.001 Password Guessing, T1078 Valid Accounts, T1021.001 Remote Desktop Protocol |
 | **Priority** | Critical: an attacker very likely holds a working password and is (or was) logged in |
 

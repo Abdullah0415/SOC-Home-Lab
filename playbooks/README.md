@@ -13,6 +13,7 @@ Short, practical checklists for triaging the alerts this lab produces. Each play
 | PB-05 | [Loss of endpoint telemetry](PB-05-telemetry-loss.md) | 506, missing events from an agent |
 | PB-06 | [Linux privilege escalation attempt](PB-06-linux-privilege-escalation.md) | 101200, 101210, 101220 |
 | PB-07 | [Suspicious PowerShell](PB-07-suspicious-powershell.md) | 101300, 101310, 101315, 101320, 101330, 92057 |
+| PB-08 | [Confirmed intrusion: brute-force login followed by persistence](PB-08-confirmed-intrusion.md) | 101400 |
 
 **General rules for every playbook**
 
