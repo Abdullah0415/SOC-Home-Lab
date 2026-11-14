@@ -32,6 +32,7 @@ The deployable rule file is [`rules/local_rules.xml`](../rules/local_rules.xml),
 | 101320 | 10 | Run-time decoding or code rebuilding | child of 91802, 91809, 91837; `FromBase64String`, `[char[]]`, `-bxor`, string concatenation | PowerShell 4104 | T1027.010, T1140 Deobfuscate/Decode | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
 | 101330 | 12 | Script Block Logging disabled or removed | child of 91802; `EnableScriptBlockLogging` set to 0 / `$false`, `reg ... /d 0`, or the key removed | PowerShell 4104 | T1562.002 Disable Windows Event Logging | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) |
 | 101400 | **15** | **Incident:** persistence within 1 hour of a successful RDP password-guessing login | child of 100100, 100300, 100400, 91844; `if_matched_group rdp_bruteforce_success` (101010 or 101020), 3,600 s | Correlation | T1110.001, T1547.001, T1053.005, T1136.001 | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) |
+| 101550 | 12 | Wazuh agent stopped: the SOC is blind to that endpoint | child of 506 (level 3) | Wazuh agent / manager | T1562.001 Disable or Modify Tools | [11](../README.md#exercise-11-defense-evasion-and-endpoint-health), [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
 
 ## Response visibility rule
 
@@ -50,12 +51,26 @@ Configuration: [`config/active-response.xml`](../config/active-response.xml). Bo
 
 ## False-positive suppression rules
 
-Level 0 means "match, but do not alert". Both rules are deliberately narrow and were validated with a **negative test** to prove they do not create a blind spot.
+Level 0 means "match, but do not alert". Every rule matches one exact benign pattern under its parent and needs a **positive test** (the noise stops) and a **negative test** (similar activity still alerts). Exercise 18 showed why both are needed: 100710 passed its negative test for ten exercises while never matching anything. Full method and proofs: [04-tuning.md](04-tuning.md).
 
 | Rule | Suppresses | Matches only when | Negative test | Exercise |
 |---|---|---|---|---|
 | 100700 | 92213 "Executable file dropped in folder commonly used by malware" | image is `powershell.exe` / `pwsh.exe` **and** file is `__PSScriptPolicyTest_*.ps1` | 14 policy-test events, 0 alerts | [8](../README.md#83-tuning-false-positives) |
-| 100710 | 92058 "Application Compatibility Database launched" | image is `System32\sdbinst.exe`, command line is exactly `-m -bg` **and** parent is `svchost.exe` (PcaSvc) | `sdbinst -m -bg` run from an admin shell still alerted at level 12 | [8](../README.md#83-tuning-false-positives) |
+| 100710 | 92058 "Application Compatibility Database launched" | image is `System32\sdbinst.exe`, command line is exactly `-m -bg` **and** parent is `svchost.exe` (PcaSvc) | `sdbinst -m -bg` run from an admin shell still alerted at level 12. **Never matched until Exercise 18** (single `\\` in an anchored path; fixed to `\\+`), positive test pending | [8](../README.md#83-tuning-false-positives), [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101500 | 92219 "Possible DLL search order hijack" (L6) | image `System32\svchost.exe` **and** file in `\Windows\SoftwareDistribution\Download\` or `\Windows\SystemTemp\` (Windows Update) | `C:\Windows\ex18-negtest.dll` from PowerShell still alerted (92203) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101510 | 92217 "Executable dropped in Windows root folder" (L6) | same image and folders (Defender definition patch) | other processes still alert (`mscorsvw.exe`, After v2) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101520 | 92213 (L15) | image `msedge.exe` **and** path `\msedge_chrome_Unpacker_BeginUnzipping<n>_<n>\` | not re-triggered yet | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101530 | 91816 (PowerShell 4104) | the Wazuh agent's own SCA `secedit` line, anchored `^...$` | any other script text still reaches 91816 | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+
+## Severity corrections
+
+| Rule | Parent (was) | New level | Matches only when | Tests | Exercise |
+|---|---|---|---|---|---|
+| 101540 | 61632 `smss.exe` (L12) | 3 | image `System32\smss.exe` **and** command `smss.exe <hex> <hex> winlogon.exe` (new logon session) | sign out / in → L3 | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101560 | 100300 Run key (L12) | 3 | image exactly Edge's `msedge.exe` **and** value `MicrosoftEdgeAutoLaunch_<32 hex>` **and** data `--no-startup-window --win-session-start` | Edge → L3; **`reg add` Run key for notepad → 100300 L12** | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101570 | 61618 `svchost.exe` (L12) | 3 | image exactly `System32\svchost.exe` **and** command exactly `-k osprivacy -p -s camsvc` | not re-triggered yet | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 101580 | 61634 `taskhost` (L12) | 3 | image exactly `System32\backgroundTaskHost.exe` **and** command ends `-ServerName:<app id>` | sign in → L3 | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
+| 91823 | built-in, overwritten (L14) | 14 | `Invoke-Command` remote execution: `-Cn` / `-ComputerName` as a parameter only (`-(ComputerName\|Cn)\b`) | "acne" / "cnc" text: no alert; `-ComputerName localhost`: L14 | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) |
 
 ## MITRE ATT&CK coverage
 
@@ -78,6 +93,7 @@ Level 0 means "match, but do not alert". Both rules are deliberately narrow and 
 | Defense Evasion | T1027.010 Command Obfuscation | 101300, 101320 |
 | Defense Evasion | T1140 Deobfuscate/Decode Files or Information | 101320 |
 | Defense Evasion | T1562.002 Disable Windows Event Logging | 101330 |
+| Defense Evasion | T1562.001 Disable or Modify Tools | 101550 |
 
 ## Built-in coverage verified (no custom rule needed)
 
@@ -89,7 +105,7 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Multiple failed Windows logons | 60204 | 10 | Needs `MS_FREQ` = 8 failures in 240 s from one IP: blind to a short guess list (Exercise 17), so 101020 now covers the gap |
 | User added to Administrators (4732) | 60154 | 12 | Adequate |
 | SSH brute force (Linux) | 5763 / 2502 | 10 | Adequate |
-| Wazuh agent stopped | 506 | 3 | Correct MITRE (T1562.001) but severity too low, tuning planned |
+| Wazuh agent stopped | 506 | 3 | Correct MITRE (T1562.001) but severity too low: raised to level 12 by 101550 (Exercise 18) |
 | Successful SSH login | 5715 | 3 | Adequate as a signal; correlated by 40112 / 100800 |
 | `FromBase64String` in a PowerShell script block | 91809 | 10 | Adequate; 101320 adds `[char[]]`, `-bxor` and string concatenation |
 | `-EncodedCommand` / `-e` with a PowerShell parent | 92057 | 12 | Adequate for those cases only; see built-in rule defects below |
@@ -106,8 +122,7 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Registry change that disables Script Block Logging | The Sysmon config does not watch the key (no Event 13); 101330 relies on the disabling command appearing in 4104 | Add the key to the Sysmon config |
 | Port scans | No network sensor in the lab; Windows logs nothing for a SYN scan (Exercise 17) | Network IDS (e.g. Suricata) or firewall logs |
 | Discovery commands (`net user`, `net localgroup`, `ipconfig`, `systeminfo`) | Only `whoami` (100200) alerts; the others are common admin commands (Exercise 17) | Discovery-burst correlation rule |
-| Endpoint Security log keeps ~10 minutes | 20 MB cap filled by File System auditing (4656/4658) in ~18 minutes; the "log cleared" event was overwritten (Exercise 17) | Larger log or narrower auditing; rely on the SIEM copy |
-| First SSH login of a newly created user not alerted (seen twice: Exercises 14 and 15) | The `Accepted password` line is in journald, but logcollector logs "Journald timestamp was refreshed due to rotation" within one second and skips it; later logins alert normally | Test the per-user journal file hypothesis in Exercise 18; until then, check the source log after any auto-block or new account |
+| First SSH login of a newly created user sometimes not alerted (missed in Exercises 14 and 15, alerted in Exercise 18) | A new user's first login makes journald open a per-user journal; logcollector reports a "rotation" 1–2 s later and the events around it are sometimes skipped: a timing race | auditd records the login independently (`USER_LOGIN`). Production: read auth logs from one source only (journald filtered by unit, or auth.log), never both |
 
 ## Closed gaps
 
@@ -117,6 +132,10 @@ Not every test ended in a new rule. Where the built-in rule was already adequate
 | Encoded PowerShell visible only as base64; `-enc` scored level 4 and a `cmd.exe` launch level 3 | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | Script Block Logging (4104) shows the decoded code; 101300 covers every spelling and parent (L12) |
 | No detection for download cradles, `[char[]]` / string obfuscation or full `Invoke-Expression` | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | [16](../README.md#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands) | Rules 101310, 101315, 101320 on the decoded script block |
 | RDP password guessing below 8 failures raised only level 5–6 alerts; 101010 never fired | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | 101020 (L12): RDP login after any failure from the same IP; 101400 (L15) correlates it with persistence |
+| Wazuh agent stop raised only level 3 | [11](../README.md#exercise-11-defense-evasion-and-endpoint-health) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) | 101550 (L12, T1562.001) |
+| Endpoint Security log kept ~10 minutes (20 MB) | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) | Raised to 200 MB; the SIEM stays the durable copy |
+| Endpoint clock ~37 s ahead (local CMOS clock, no NTP) | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) | Windows Time synced to `time.windows.com` |
+| Every command by a login user logged by auditd (4,341 alerts in 35 min) | [15](../README.md#exercise-15-linux-privilege-escalation-visibility-with-auditd) | [18](../README.md#exercise-18-alert-tuning--less-noise-without-blind-spots) | Audit scope cut to `sudo`, `su`, `bash`, `curl`, `wget`, `nc`, `python3` |
 | Run key created by PowerShell not detected by 100300 (reg.exe only) | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | [17](../README.md#exercise-17-full-attack-chain-investigation-and-incident-report) | 100300 moved to parent 92300 (any process), `Run\` / `RunOnce\` only |
 
 ## Built-in rule defects found
@@ -127,9 +146,10 @@ Found by testing attack variants and then reading the vendor rule files (Exercis
 |---|---|---|---|
 | 92057 | Spelling list `encodedcommand\|e\|ea\|ec\|encodeda\|encode\|en\|enco` has no `enc`; parent must be `powershell.exe` | `-enc` and any non-PowerShell parent are missed | 101300 |
 | 91837 | Regex and description say `Invoke-Expresion` (typo) | Full `Invoke-Expression` never matches | 101315 |
-| 91823 (L14) | `(?i)(ComputerName\|Cn)` with no word boundary | Level 14 false positive on a built-in Windows script | To tune in Exercise 18 |
+| 91823 (L14) | `(?i)(ComputerName\|Cn)` with no word boundary | Level 14 false positive on a built-in Windows script and on any text containing "cn" | Overwritten with `-(ComputerName\|Cn)\b` (Exercise 18) |
 | 92302 | Matches only `image` = `reg.exe` | A custom child (100300) missed a Run key set by PowerShell | 100300 now also a child of 92300 (Exercise 17) |
-| 92213 (L15) | Fires on `msedge.exe` unpacking `well_known_domains.dll` into a new profile's Temp folder | Level 15 false positive at every first logon of a user | To tune in Exercise 18 |
+| 92213 (L15) | Fires on `msedge.exe` unpacking `well_known_domains.dll` into a new profile's Temp folder | Level 15 false positive at every first logon of a user | 101520 (Exercise 18) |
+| 61632 / 61618 / 61634 (L12) | "Suspicious process" rules for `smss.exe`, `svchost.exe` and `taskhost` match by process name; normal logon instances that miss the built-in allow-list fire at level 12 | 7 of 8 level 12 alerts in an idle hour were a normal logon | 101540, 101570, 101580 lower the exact benign instances to level 3 (Exercise 18) |
 
 ## Rule-writing conventions
 
@@ -138,4 +158,6 @@ Found by testing attack variants and then reading the vendor rule files (Exercis
 - Rule IDs and field names are confirmed on live events first. Rule XML uses `win.eventdata.*` and `file`, not the dashboard names `data.win.eventdata.*` and `syscheck.path`.
 - Correlation rules that must accept several triggers tag them with a shared group (`rdp_bruteforce_success`) and use `if_matched_group` (Exercise 17).
 - When a built-in sibling rule can match the same event first, the custom rule lists that rule in `if_sid` too, so it is still evaluated (Exercise 16).
+- Windows paths are matched with `\\+`, because Wazuh stores them with doubled backslashes; a single `\\` in an anchored regex never matches (100710, Exercise 18).
+- Tuning never disables a rule ID: it adds a narrow child rule with a positive **and** a negative test ([04-tuning.md](04-tuning.md)).
 - Every change is validated with `wazuh-analysisd -t` before the manager is restarted, and every rule is proven by a screenshot of it firing.

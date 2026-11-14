@@ -1,7 +1,13 @@
-## Exercise 15 - Wazuh lab audit rules
-# Every program started by a real logged-in user (uid 1000+), including sudo attempts
--a always,exit -F arch=b64 -S execve -F auid>=1000 -F auid!=unset -k audit-wazuh-c
--a always,exit -F arch=b32 -S execve -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+## Exercise 18 - Wazuh lab audit rules (tuned)
+# Only high-value programs run by a real logged-in user (uid 1000+)
+# (Exercise 15 logged EVERY command -> coreutils/tee noise, rule 80792)
+-a always,exit -F path=/usr/lib/cargo/bin/sudo -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/su -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/bash -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/curl -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/wget -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/nc.openbsd -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
+-a always,exit -F path=/usr/bin/python3.14 -F perm=x -F auid>=1000 -F auid!=unset -k audit-wazuh-c
 # Read attempts on the password hash file by a logged-in user (allowed or denied)
 -a always,exit -F path=/etc/shadow -F perm=r -F auid>=1000 -F auid!=unset -k audit-wazuh-r
 # Any change to the sudo configuration

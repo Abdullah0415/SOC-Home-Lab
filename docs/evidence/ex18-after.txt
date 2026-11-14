@@ -1,0 +1,26 @@
+TOTAL 107 | LEVEL 10+ 8
+   24 92307   L3   Evidence of new service creation found in registry under HKL
+   16 60608   L4   Summary event of the report's signatures.
+    9 92205   L9   Powershell process created an executable file in Windows roo
+    8 61104   L3   Service startup type was changed
+    8 92021   L3   Powershell was used to delete files or directories
+    7 60642   L3   Software protection service scheduled successfully.
+    7 92066   L4   C:\\Windows\\SysWOW64\\SecEdit.exe binary in a suspicious lo
+    4 61634   L12  Sysmon - Suspicious Process - taskhost.exe
+    4 92031   L3   Discovery activity executed
+    2 100300  L12  Custom SOC rule: Run key modified - possible persistence
+    2 80784   L3   Audit: Watch - Read access: /etc/shadow.
+    2 19009   L3   CIS Microsoft Windows 11 Enterprise Benchmark v3.0.0: Ensure
+    2 92052   L4   Windows command prompt started by an abnormal process
+    1 503     L3   Wazuh agent started.
+    1 60668   L3   The Windows search service started.
+    1 61618   L12  Sysmon - Suspicious Process - svchost.exe
+    1 19013   L5   CIS Microsoft Windows 11 Enterprise Benchmark v3.0.0: Ensure
+    1 19005   L9   SCA summary: CIS Microsoft Windows 11 Enterprise Benchmark v
+    1 60702   L5   The VSS service is shutting down due to idle timeout.
+    1 5501    L3   PAM: Login session opened.
+    1 5502    L3   PAM: Login session closed.
+    1 80792   L3   Audit: Command: /usr/lib/cargo/bin/sudo.
+    1 5402    L3   Successful sudo to ROOT executed.
+    1 61102   L5   Windows System error event
+    1 92058   L12  Application Compatibility Database launched

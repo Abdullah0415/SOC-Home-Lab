@@ -42,4 +42,5 @@
 
 ## 5. Lessons / tuning
 - Legitimate admin scripts also use `Invoke-WebRequest` and `Invoke-Expression`. Exclude them by script path, signer or host, with evidence from the alert JSON, never by removing the keyword.
-- Known 4104 noise in this lab: the Wazuh agent's SCA scan (`secedit /export`, rule 91816), Windows maintenance scripts (91820) and the 91823 false positive.
+- Known 4104 noise in this lab: the Wazuh agent's SCA scan (`secedit /export`, rule 91816, suppressed by 101530) and the 91823 false positive (regex fixed by overwrite) since Exercise 18; Windows maintenance scripts (91820) remain.
+- 91823 now fires only on a real `-Cn` / `-ComputerName` parameter, so treat any 91823 alert as remote execution until proven otherwise.

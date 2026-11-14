@@ -138,3 +138,15 @@ The same four-guess intrusion that first produced only level 5–6 alerts for it
 - **Test rules with more than one tool.** A Run key rule written for `reg.exe` missed PowerShell; one detection layer (4104) hid the gap in another (Sysmon).
 - **Severity is not priority.** The only level 15 alerts were a browser updating itself; the attacker's entry was level 5–6.
 - **Local logs are not evidence you can count on.** They were cleared by the attacker and overwritten by normal activity within minutes. The SIEM copy made this investigation possible.
+
+## 12. Follow-up status (Exercise 18)
+
+| Recommendation | Status |
+|---|---|
+| 1–2. Admin rights and RDP exposure | Lab accounts removed and RDP disabled during eradication |
+| 3. Keep the new detections | ✅ 101020, 101400 and the fixed 100300 kept; 100300 now ignores only Edge's own startup-boost value (101560, level 3), proven by a negative test |
+| 4. Larger Security log | ✅ 20 MB → 200 MB |
+| 5. NTP on the endpoint | ✅ Windows Time synced to `time.windows.com` (it was using the local CMOS clock) |
+| 6. Discovery-burst rule | ⏳ Open |
+| 7. Tune the noise | ✅ 92219 and 92217 (Windows Update) suppressed, 92213 Edge unpacker suppressed; see [04-tuning.md](04-tuning.md) |
+

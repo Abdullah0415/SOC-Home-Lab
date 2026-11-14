@@ -44,6 +44,7 @@
 - Reset the passwords of every account on the host if /etc/shadow was read successfully.
 - Remove unknown sudoers entries, SSH keys (`~/.ssh/authorized_keys`), cron jobs and new users.
 - Confirm auditd and the Wazuh agent are still running (`systemctl status auditd`, `wazuh-control status`).
+- Since Exercise 18, auditd records the execution of `sudo`, `su`, `bash`, `curl`, `wget`, `nc` and `python3` only. Other commands an attacker ran are not in `audit.log`; check the shell history and journald for them.
 
 ## 5. Lessons / tuning
 - Expected admin sudo should not reach 101200. If a new admin is added, update the admin list (CDB list in production; uid 1000 in this lab).

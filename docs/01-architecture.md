@@ -51,7 +51,7 @@ flowchart LR
         PSL --> AG
     end
     subgraph SIEM["SOC-Wazuh"]
-        AUTH["/var/log/auth.log<br/>(local SSH, sudo)"]
+        AUTH["journald<br/>(local SSH, PAM, sudo)"]
         AUD["/var/log/audit/audit.log<br/>(auditd)"]
         MGR["wazuh-analysisd<br/>decoders + rules<br/>(built-in + local_rules.xml)"]
         IDX["Indexer"]
@@ -71,19 +71,20 @@ flowchart LR
 | Windows System | Service changes, log cleared (104), Kernel-Power 41 / 6008 | Exercises 11, 12 |
 | Sysmon | Process creation (1), network connection (3), file create (11), registry (13) | Exercises 5, 6, 8, 10 |
 | FIM (whodata, `report_changes`) | `C:\FIM-Test` (sensitive Finance folder) and both Windows Startup folders | Exercise 10 |
-| Linux auth log (manager) | SSH logins, PAM, user and group changes | Exercises 3, 9 |
-| auditd (manager) | `execve` by login users, `/etc/shadow` reads, sudoers changes ([config](../config/auditd-wazuh-lab.rules)) | Exercise 15 |
+| Linux system journal (manager, `log_format journald`) | SSH logins, PAM, user and group changes. `/var/log/auth.log` holds the same lines but is deliberately not collected, to avoid duplicate alerts (Exercise 18) | Exercises 3, 9, 14, 18 |
+| auditd (manager) | Execution of `sudo`, `su`, `bash`, `curl`, `wget`, `nc`, `python3` by login users (every `execve` until Exercise 18), `/etc/shadow` reads, sudoers changes ([config](../config/auditd-wazuh-lab.rules)) | Exercises 15, 18 |
 | PowerShell/Operational (endpoint) | Event 4104 only: decoded script blocks ([config](../config/powershell-localfile.xml)) | Exercise 16 |
 
 **Audit policy on the endpoint:** Logon auditing (Success and Failure) and File System auditing (Success, required by whodata). Account lockout threshold: 10 attempts. PowerShell Script Block Logging is enabled by policy (`HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging`, `EnableScriptBlockLogging = 1`) since Exercise 16.
 
 ## Operating notes
 
-- **Archives** (`logall_json`) are off by default and enabled only temporarily to prove whether an event reached the manager. They are always switched back off afterwards.
+- **Archives** (`logall_json`) are off by default and enabled only temporarily to prove whether an event reached the manager. They are always switched back off afterwards, and are off during every alert-count measurement.
+- **Tuning:** noise is handled by narrow child rules in `local_rules.xml`, never by disabling a rule ID. Method and proofs: [04-tuning.md](04-tuning.md).
 - **Active Response** (automatic IP blocking) is configured on the manager but **disabled** after Exercise 14, so attacker IPs are not blocked during other exercises. Configuration: [config/active-response.xml](../config/active-response.xml).
 - **Vulnerability detection** is disabled: its feed download failure kept crashing `wazuh-modulesd` and broke the dashboard API. It is not needed for attack detection in this lab.
 - **Manager restarts:** on the slow HDD, `systemctl restart` can time out and leave the manager half-stopped. The reliable sequence is `wazuh-control stop`, remove any leftover `/var/ossec/var/start-script-lock` directory, then `wazuh-control start`.
 - **Snapshots** are taken on SOC-Win11 and SOC-Wazuh at the end of every exercise, so each exercise can be reproduced from a known state.
-- **Time:** server logs are UTC, the dashboard shows local time (UTC+2). Timelines always state the timezone. The endpoint clock runs ~37 s ahead of the manager (Exercise 17), so timelines use manager time.
-- **Endpoint log retention:** the Windows Security log is capped at 20 MB, and File System auditing (for whodata) fills it in under 20 minutes. Wazuh is the durable copy; the agent's default query does not forward 4656/4658.
+- **Time:** server logs are UTC, the dashboard shows local time (UTC+2). Timelines always state the timezone. The endpoint clock was ~37 s ahead of the manager in Exercise 17 because Windows Time was using the local CMOS clock; since Exercise 18 it syncs with `time.windows.com` over NTP.
+- **Endpoint log retention:** the Windows Security log was capped at 20 MB, which File System auditing (for whodata) filled in under 20 minutes (Exercise 17). It was raised to 200 MB in Exercise 18. Wazuh remains the durable copy; the agent's default query does not forward 4656/4658.
 - **Isolation:** the lab network is NAT only. Test users (`testuser`, `rdptest`) and test files are created for an exercise and removed in its cleanup step, so no real credentials appear anywhere.

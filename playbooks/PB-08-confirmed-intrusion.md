@@ -31,7 +31,7 @@ Search the host from the first failed logon to now, grouped by rule (see the tim
 | Every action of the account | `agent.name:<host> and <account>` |
 | Execution | `rule.id:(101300 or 101310 or 101315 or 101320 or 100200)` |
 | All persistence | `rule.id:(100100 or 100300 or 100400 or 91844 or 60154 or 100910)` |
-| Defense evasion | `rule.id:(101330 or 100930 or 506)` |
+| Defense evasion | `rule.id:(101330 or 100930 or 101550)` |
 | Downloads | `data.win.eventdata.scriptBlockText:*http*` |
 
 - **Do not rely on the endpoint's logs:** they may be cleared (100930) or overwritten. Use the SIEM.

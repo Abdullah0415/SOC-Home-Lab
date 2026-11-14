@@ -26,10 +26,11 @@
 A hands-on Security Operations Center (SOC) home lab built on VMware Workstation with a Wazuh SIEM, a Windows 11 endpoint running Sysmon, and a Kali Linux attacker. In each exercise I simulate a real attacker technique, investigate the resulting logs, close detection gaps with custom Wazuh rules mapped to MITRE ATT&CK, tune false positives, and document the evidence.
 
 > **At a glance**
-> - **17 exercises**, from brute-force detection to defense evasion, crash root-cause analysis, automated response, Linux privilege escalation, PowerShell attack detection and a full incident investigation with a written report
-> - **22 custom detection rules** (levels 6 to 15, including an incident correlation rule), **1 response-visibility rule** and **2 false-positive suppression rules**
-> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001, T1548.003, T1003.008, T1059.001, T1027.010, T1140, T1562.002, T1098
-> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response), Linux auditd, PowerShell Script Block Logging, auditing built-in detection rules, incident investigation and reporting
+> - **18 exercises**, from brute-force detection to defense evasion, crash root-cause analysis, automated response, Linux privilege escalation, PowerShell attack detection, a full incident investigation with a written report, and measured alert tuning
+> - **23 custom detection rules** (levels 6 to 15, including an incident correlation rule), **1 response-visibility rule**, **6 false-positive suppression rules**, **4 severity-correction rules** and **1 fixed built-in rule**
+> - **MITRE ATT&CK coverage:** T1136.001, T1033, T1547.001, T1053.005, T1021, T1021.001, T1105, T1110.001, T1078, T1565.001, T1070.001, T1548.003, T1003.008, T1059.001, T1027.010, T1140, T1562.002, T1562.001, T1098
+> - **Status:** ✅ complete, 18 exercises (October–November 2026). The lab ends with a tuned, documented ruleset; follow-up items are listed under [Next steps](#-next-steps).
+> - **Skills:** Windows Event Log and Sysmon analysis, Linux auth log analysis, detection engineering, false-positive tuning with before/after measurement, file integrity monitoring, defense-evasion detection, attack timelines, log-pipeline troubleshooting, crash dump analysis (WinDbg), automated response (Wazuh Active Response), Linux auditd, PowerShell Script Block Logging, auditing built-in detection rules, incident investigation and reporting
 
 ## 📚 Documentation
 
@@ -38,10 +39,11 @@ A hands-on Security Operations Center (SOC) home lab built on VMware Workstation
 | 🖥️ [Lab architecture](docs/01-architecture.md) | VMs, network, telemetry pipeline and collection configuration |
 | 📊 [Detection rules](docs/02-detection-rules.md) | Every custom rule with its parent, data source and MITRE mapping, plus documented gaps |
 | 🎓 [Lessons learned](docs/03-lessons-learned.md) | What broke, what misled me, and what I do differently now |
+| 🎚️ [Alert tuning](docs/04-tuning.md) | Tuning method, every tuning rule with its proof, before/after measurement and what was deliberately not tuned (Exercise 18) |
 | 🧾 [Playbooks](playbooks/) | Investigation checklists for the alerts this lab produces |
 | ⚙️ [Rules](rules/) | The deployable `local_rules.xml` running on the Wazuh manager |
 | 📄 [Incident report IR-01](docs/incident-report-01.md) | Full intrusion (Exercise 17): timeline, IOCs, root cause, detection coverage, response, recommendations |
-| 🛡️ [Config](config/) | Active Response, auditd and PowerShell log collection configuration |
+| 🛡️ [Config](config/) | Active Response, auditd (tuned in Exercise 18) and PowerShell log collection configuration |
 | 📈 [TryHackMe progress](docs/tryhackme-progress.md) | Rooms completed and how they connect to the lab |
 
 <details>
@@ -55,19 +57,21 @@ SOC-Home-Lab/
 │   ├── 01-architecture.md
 │   ├── 02-detection-rules.md
 │   ├── 03-lessons-learned.md
+│   ├── 04-tuning.md          Exercise 18 alert tuning
 │   ├── incident-report-01.md  Exercise 17 incident report
-│   ├── evidence/             Alert timeline behind the report
+│   ├── evidence/             Alert timeline behind the report, Exercise 18 alert counts
 │   └── tryhackme-progress.md
 ├── rules/
 │   └── local_rules.xml       Custom Wazuh rules (deployable)
 ├── config/
+│   ├── README.md             What each file is and where it goes
 │   ├── active-response.xml   Active Response blocks from ossec.conf
-│   ├── auditd-wazuh-lab.rules  Linux audit rules (Exercise 15)
+│   ├── auditd-wazuh-lab.rules  Linux audit rules (Exercise 15, tuned in Exercise 18)
 │   ├── auditd-localfile.xml   audit.log input for Wazuh
 │   └── powershell-localfile.xml  PowerShell 4104 input for the agent (Exercise 16)
 ├── playbooks/                PB-01 … PB-08 investigation checklists
 └── screenshots/
-    └── Exercise-01 … Exercise-17
+    └── Exercise-01 … Exercise-18
 ```
 
 </details>
@@ -94,6 +98,7 @@ SOC-Home-Lab/
 - [Exercise 15: Linux Privilege Escalation Visibility with auditd](#exercise-15-linux-privilege-escalation-visibility-with-auditd)
 - [Exercise 16: PowerShell Attacks – Script Block Logging and Encoded Commands](#exercise-16-powershell-attacks--script-block-logging-and-encoded-commands)
 - [Exercise 17: Full Attack Chain Investigation and Incident Report](#exercise-17-full-attack-chain-investigation-and-incident-report)
+- [Exercise 18: Alert Tuning – Less Noise Without Blind Spots](#exercise-18-alert-tuning--less-noise-without-blind-spots)
 - [What I learned](#-what-i-learned)
 - [Next steps](#-next-steps)
 
@@ -130,7 +135,7 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 100500 | 8 | Network logon (type 3) | T1021 Remote Services | 12 |
 | 100600 | 8 | PowerShell web download | T1105 Ingress Tool Transfer | 12 |
 | 100700 | 8 | Suppress: PowerShell policy-test file (benign) | n/a | 0 |
-| 100710 | 8 | Suppress: `sdbinst -m -bg` run by PcaSvc (benign) | n/a | 0 |
+| 100710 | 8, 18 | Suppress: `sdbinst -m -bg` run by PcaSvc (benign); regex fixed in Exercise 18, it had never matched | n/a | 0 |
 | 100800 | 9 | SSH brute force that succeeded | T1110.001, T1078 | 14 |
 | 100900 | 10 | Sensitive Finance file modified or deleted | T1565.001 Stored Data Manipulation | 10 |
 | 100910 | 10 | File added to a Windows Startup folder | T1547.001 Run Keys / Startup Folder | 12 |
@@ -148,6 +153,21 @@ Isolated NAT network 10.10.10.0/24. Dashboard: `https://10.10.10.10`. Full detai
 | 101320 | 16 | Run-time decoding or code rebuilding (FromBase64String, `[char[]]`, `-bxor`, string concatenation) | T1027.010, T1140 Deobfuscate/Decode | 10 |
 | 101330 | 16 | PowerShell Script Block Logging disabled or removed | T1562.002 Disable Windows Event Logging | 12 |
 | 101400 | 17 | **Incident:** persistence within 1 hour of a successful RDP password-guessing login | T1110.001, T1547.001, T1053.005, T1136.001 | 15 |
+| 101550 | 18 | Wazuh agent stopped (raises built-in 506 from level 3) | T1562.001 Disable or Modify Tools | 12 |
+
+**Tuning rules (Exercise 18).** Each one matches a single, verified benign pattern under its parent, so the parent still fires for everything else:
+
+| Rule | Parent | Benign pattern | Level |
+|---|---|---|---|
+| 101500 | 92219 (L6) | `svchost.exe` writing Windows Update DLLs in `SoftwareDistribution\Download` / `SystemTemp` | 0 |
+| 101510 | 92217 (L6) | `svchost.exe` dropping a Defender update executable in the same folders | 0 |
+| 101520 | 92213 (L15) | `msedge.exe` unpacking its own component into Temp | 0 |
+| 101530 | 91816 | The Wazuh agent's own SCA `secedit` script block, anchored to the exact line | 0 |
+| 101540 | 61632 (L12) | `smss.exe` starting a logon session for `winlogon.exe` | 3 |
+| 101560 | 100300 (L12) | `msedge.exe` writing its own `MicrosoftEdgeAutoLaunch_<32 hex>` Run value | 3 |
+| 101570 | 61618 (L12) | `svchost.exe -k osprivacy -p -s camsvc` at logon | 3 |
+| 101580 | 61634 (L12) | `backgroundTaskHost.exe -ServerName:<app id>` at logon | 3 |
+| 91823 | built-in, overwritten | `Invoke-Command` remote rule: `Cn` now only as the `-Cn` / `-ComputerName` parameter, not inside any word | 14 |
 
 Full rule details, MITRE coverage and documented visibility gaps: [docs/02-detection-rules.md](docs/02-detection-rules.md). Deployable rule file: [rules/local_rules.xml](rules/local_rules.xml). Investigation steps for these alerts: [playbooks/](playbooks/).
 
@@ -522,6 +542,8 @@ Two built-in rules kept firing on normal Windows activity:
 
 The negative test matters: it proves the suppression did not create a blind spot.
 
+> **Update (Exercise 18):** 100710 never had a positive test, and it never worked. Its anchored paths used a single `\\`, but Wazuh stores Windows paths with doubled backslashes, so the benign 92058 kept firing at level 12 in every later measurement. Fixed in [Exercise 18](#186-a-rule-that-never-fired-100710). Lesson: a suppression needs a positive test too, not only a negative one.
+
 <table>
   <tr>
     <td align="center" valign="top" width="50%"><a href="screenshots/Exercise-08/EX8-14-FP-alerts-before.png"><img src="screenshots/Exercise-08/EX8-14-FP-alerts-before.png" width="400" alt="False positive alerts before tuning"></a><br><sub>False positive alerts before tuning</sub></td>
@@ -816,7 +838,7 @@ I tried to stop the Sysmon service four ways: `Stop-Service`, `sc.exe stop`, `St
 
 Stopping the agent is the most dangerous move: with the agent down, the SOC is blind to that endpoint.
 
-- Built-in rule **506 "Wazuh agent stopped"** fired, with the correct MITRE mapping (T1562.001), but only at **level 3**. Gap: the severity is far too low for an event that blinds the SOC. A tuned child of rule 506 (level 12) is a planned follow-up.
+- Built-in rule **506 "Wazuh agent stopped"** fired, with the correct MITRE mapping (T1562.001), but only at **level 3**. Gap: the severity is far too low for an event that blinds the SOC. A tuned child of rule 506 at level 12 was added in Exercise 18 (101550).
 - **Second finding:** a System event written *while the agent was stopped* never reached the manager, and was not recovered after the agent restarted. The agent does not replay Windows EventChannel events it missed while down, so anything that happens during an agent outage is a permanent blind spot.
 
 ### 11.4 Unexpected shutdown and crash (T1529), a visibility gap
@@ -1838,6 +1860,251 @@ The same four-guess intrusion that first produced level 5–6 alerts for its ent
 
 ---
 
+## Exercise 18: Alert Tuning – Less Noise Without Blind Spots
+
+**Goal:** Exercises 15 to 17 left a list of noisy and misleading alerts: in the Exercise 17 intrusion, 68% of alerts were noise and the only level 15 alerts were a false positive. This exercise works through that list as a SOC engineer would: measure the noise, investigate each source, tune it with the narrowest possible rule, **prove** the real detection still fires, then measure again.
+
+**Golden rule:** never silence a rule ID. Silence or lower **one exact pattern** as a child rule, and prove with a negative test that the parent still fires for anything else.
+
+**Hosts:** SOC-Win11 (endpoint) · SOC-Wazuh (10.10.10.10, manager and auditd target) · SOC-Kali (10.10.10.130, SSH test)
+**Full method, every rule and its proof:** 🎚️ [docs/04-tuning.md](docs/04-tuning.md)
+
+### 18.1 Baseline: what an idle hour looks like
+
+Same start each time (reboot the endpoint, log in, open Edge and File Explorer once, then leave every VM idle for 60 minutes), counted from `alerts.json` with the same script ([evidence](docs/evidence/)).
+
+| Before (13 Nov, 13:45–14:47 UTC) | Count |
+|---|---|
+| **Total / level 10+** | **58 / 1** |
+| 92219 "DLL search order hijack" (Windows Update) | 28 (48%) |
+| 60642 Software protection scheduled | 9 |
+| 80792 auditd command: `tee` (my own commands) | 6 |
+| 92058 AppCompat database (the only level 10+) | 1 |
+
+### 18.2 Windows Sysmon noise
+
+| Alert | Investigation (live alert, not the guide) | Tuning |
+|---|---|---|
+| 92219 ×28 | `svchost.exe` writing Windows Update DLLs (`UpdateAgent.dll`, `wcp.dll`, `dpx.dll`…) into `SoftwareDistribution\Download\...\Metadata` | 101500, level 0 |
+| 92217 ×1 | `svchost.exe` writing a Defender definition patch (`AM_Delta_Patch_*.exe`) to `SoftwareDistribution\Download\Install` | 101510, level 0 |
+| 92213 (L15, Exercise 17) | `msedge.exe` unpacking its own component into Temp | 101520, level 0 |
+
+- The guide's rule used `signed` / `signature` fields. **They do not exist on Sysmon Event 11** (confirmed in the live JSON), so the rule matches the process and the folder instead.
+- **Negative test:** PowerShell dropping `C:\Windows\ex18-negtest.dll` still alerted (92203, level 6). Unexpected DLL creation is still detected.
+
+### 18.3 PowerShell 4104 noise
+
+- **91823 (level 14) had a broken regex:** `(ComputerName|Cn)` matched "cn" inside any word. A script block containing *"acne cream, cnc machine"* raised a level 14 "remote code execution" alert. Overwrote the built-in rule (`overwrite="yes"`, parent, options and MITRE kept identical) with `-(ComputerName|Cn)\b`. Result: the "acne" text no longer fires; `Invoke-Command -ComputerName localhost` still fires at level 14.
+- **91816:** the Wazuh agent's own SCA scan raised 8 alerts at every agent restart. 101530 matches only that exact `secedit` line (anchored `^...$`). After a restart: 0.
+
+### 18.4 Severity fixes
+
+| Rule | Was | Now | Proof |
+|---|---|---|---|
+| 101540 (child of 61632) | Every logon: `smss.exe` "suspicious process", **level 12** | level 3 | sign out / in → 101540 L3, no 61632 |
+| 101550 (child of 506) | Wazuh agent stopped, **level 3** | **level 12**, T1562.001 | stop/start the agent service → 101550 L12 |
+
+The first version of 101540 never matched: the live event has **no `parentImage` field**, and the command line continues after the two session IDs (`... 00000104 000000cc winlogon.exe {GUID}`). Rewritten from the real values.
+
+### 18.5 Linux: auditd noise and the journald question
+
+**auditd.** Exercise 15 audited every `execve` by a logged-in user, so every `ls`, `cat` and `tee` became an alert. The audit rules now watch only **sudo, su, bash, curl, wget, nc and python3**, by their real paths ([config/auditd-wazuh-lab.rules](config/auditd-wazuh-lab.rules)). The `/etc/shadow` and sudoers watches were not touched.
+
+- `sudo` on Ubuntu 26.04 is **sudo-rs at `/usr/lib/cargo/bin/sudo`**. Writing `/usr/bin/sudo` from a guide would have silently removed all sudo visibility. Also: `python3` → `python3.14`, `nc` → `nc.openbsd` (auditd does not follow symlinks).
+- **Test:** `tee`, `ls` and `curl` run after the change → `ausearch` and `alerts.json` both show only `curl` (and the `sudo` used to search). `tee` and `ls`: gone.
+- **A testing trap:** `ausearch -ts recent` means the last 10 minutes, so the first test still showed events from **before** the change. A fixed start time gave the true result.
+
+**journald first-login test** (open question from Exercises 14 and 15). With archives on, a brand-new user logged in over SSH from Kali:
+
+| | Login | journald "rotation" | Login alert |
+|---|---|---|---|
+| Exercise 14 | 12:44:17 | 12:44:18 | ❌ missed |
+| Exercise 15 | 11:26:28 | 11:26:29 | ❌ missed |
+| **Exercise 18** | **13:39:07** | **13:39:09** | ✅ 5715 + 5501 |
+
+The rotation happened again at the new user's first login, but this time the events survived. Conclusion: an **intermittent race**, not a rule bug, which makes it more dangerous because one passing test proves nothing.
+
+- **Compensating control:** auditd recorded the same login independently (`USER_LOGIN` in `audit.log`, not journald).
+- **Decision:** I did not add `/var/log/auth.log` as a second source. It would duplicate every sudo, PAM and CRON alert, the kind of noise this exercise removes. Production fix: one source per log (journald filtered by unit, or auth.log only), never both.
+- **Side finding:** the new user got the reused UID 1001, so SSH showed *"Last login: Sun Nov 8 … from 10.10.10.130"*, the deleted Exercise 15 user's login. `lastlog` is per UID, not per account.
+
+### 18.6 A rule that never fired (100710)
+
+Reading `local_rules.xml` during the final review showed why the benign `sdbinst -m -bg` (92058, level 12) kept appearing in every window although Exercise 8 had suppressed it:
+
+```
+(?i)^C:\\Windows\\System32\\sdbinst\.exe$      <- matches ONE backslash
+C:\\Windows\\System32\\sdbinst.exe             <- the stored value has TWO
+```
+
+Anchored with `^...$`, it could never match. Exercise 8 only ran a negative test (sdbinst from PowerShell still alerts), which passes for a broken rule too. Fixed to `\\+` like every Exercise 18 rule; it will be confirmed the next time PcaSvc runs.
+
+### 18.7 Endpoint hygiene
+
+| Problem | Fix |
+|---|---|
+| Endpoint clock not synced: `Source: Local CMOS Clock`, "not synchronized" (37 s skew in Exercise 17) | `w32tm` → `time.windows.com`, Leap Indicator 0, synced |
+| Security log 20 MB (overwritten in ~18 min in Exercise 17) | 200 MB |
+
+### 18.8 After: measuring, and finding more
+
+**After v1 (14 Nov, 13:53–14:53 UTC): 107 alerts, 8 at level 10+.** Higher than the baseline, so I investigated before claiming anything:
+
+- **Every targeted rule was at 0:** 92219, 92217 (Windows Update), 80792 `tee`, 91816, 61632.
+- The extra volume came from a different Windows workload: the agent's SCA scan after the reboot (60608, CIS checks, 92066), a burst of service registry changes (92307 ×24, likely Windows preparing the update that installed at the next restart) and ~6 Linux alerts from a check I ran on the manager inside the window.
+- **7 of the 8 level 12 alerts were benign logon activity**, so a level 12 meant "someone logged in":
+
+| Alert | Process | Tuning |
+|---|---|---|
+| 61618 ×1 | `svchost.exe -k osprivacy -p -s camsvc` | 101570, level 3 |
+| 61634 ×4 | `backgroundTaskHost.exe -ServerName:<app>` | 101580, level 3 |
+| 100300 ×2 (my own Run key rule) | `msedge.exe` writing `MicrosoftEdgeAutoLaunch_<32 hex>` (Edge startup boost) | 101560, level 3 |
+
+These were lowered to level 3, not silenced, and each needs **all** of: exact image path, exact command line or value name.
+
+| Test | Result |
+|---|---|
+| Sign out, sign in, open and close Edge | 101540 ×1, 101580 ×2, 101560 ×2, all **level 3**, no level 12 |
+| **Negative:** `reg add ...\Run /v EX18NegTest /d notepad.exe` | **100300 level 12** still fires |
+
+**After v2 (14 Nov, 15:13–16:13 UTC, right after a Windows Update install): 69 alerts, 3 at level 10+**, each triaged:
+
+| Alert | Finding | Decision |
+|---|---|---|
+| 92206 L12 | `spoolsv.exe` wrote `spool\drivers\x64\3\New\PrintConfig.dll` | Signature **Valid, CN=Microsoft Windows**: benign printer driver update. **Not tuned**: this is exactly where PrintNightmare drops its DLL |
+| 61638 L12 | `DllHost.exe /Processid:{...}` (COM surrogate) at logon | Seen once, observation only |
+| 92058 L12 | `sdbinst -m -bg` | Led to the 100710 fix (18.6) |
+| 92217 ×5 (L6) | `mscorsvw.exe` (.NET native image compiler) after the update | Rare, post-update only: documented, not tuned |
+
+### 18.9 Result
+
+![Exercise 18 before and after](screenshots/Exercise-18/EX18-before-after-chart.png)
+
+| | Before | After v1 | After v2 |
+|---|---|---|---|
+| Total alerts | 58 | 107 | 69 |
+| Level 10+ | 1 | 8 | 3 (all triaged benign) |
+| Targeted noise (92219, 92217 WU, 80792 `tee`) | 35 | 0 | 0 |
+| Benign logon L12 (61632, 61618, 61634, Edge 100300) | – | 7 | 0 (now level 3) |
+
+**Honest reading:** the total did not fall below the baseline, because each idle hour had a different Windows workload (Windows Update DLLs before; SCA scan, servicing and a .NET recompile after). What changed is **what the alerts mean**: the tuned noise is gone, a level 12 is no longer a normal logon, and every remaining level 10+ alert was investigated and has a recorded verdict. Total alert count alone is a poor tuning metric.
+
+**Still open:** 101520 and 101570 were written from confirmed live alerts but not re-triggered; 100710's fix awaits the next PcaSvc run; 92205 (PowerShell created an executable in the Windows folder, ×10 in v2) is not yet investigated.
+
+### Screenshots
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-02.png" width="100%"><br><sub>Baseline: 58 alerts, 92219 is 48%</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-30.png" width="100%"><br><sub>After v1: 107 alerts, 8 at level 10+</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-31.png" width="100%"><br><sub>The 8 level 12 alerts: logon processes and Edge</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-34.png" width="100%"><br><sub>After the fix: same activity at level 3</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-35b.png" width="100%"><br><sub>Negative test: a non-Edge Run key is still level 12</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-37.png" width="100%"><br><sub>After v2: 69 alerts, 3 at level 10+</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-39.png" width="100%"><br><sub>92206 triage: PrintConfig.dll signed by Microsoft Windows</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-19.png" width="100%"><br><sub>auditd: tee and ls no longer logged, curl still is</sub></td>
+</tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-01.png" width="100%"><br><sub>Backups before any change</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-03.png" width="100%"><br><sub>92219: svchost writing Windows Update DLLs</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-04.png" width="100%"><br><sub>92217: Defender definition patch</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-05a.png" width="100%"><br><sub>Tuning rules 101500 / 101510 added</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-05b.png" width="100%"><br><sub>Rules validated</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-05c.png" width="100%"><br><sub>Manager restarted</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-05d.png" width="100%"><br><sub>Rules loaded, manager running</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-06a.png" width="100%"><br><sub>92219 flat after the rule</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-06b.png" width="100%"><br><sub>92219: 0 events after the rule time</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-07a.png" width="100%"><br><sub>Negative test: unexpected DLL still alerts (92203)</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-07b.png" width="100%"><br><sub>Negative test on the dashboard</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-09.png" width="100%"><br><sub>91823 false positive: "acne" and "cnc" at level 14</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-10.png" width="100%"><br><sub>91816: the SCA scan rule</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-11.png" width="100%"><br><sub>91823 overwrite and 101530 added</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-12.png" width="100%"><br><sub>91823 fixed: real -ComputerName still fires</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-13.png" width="100%"><br><sub>SCA scan: 0 alerts after an agent restart</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-15.png" width="100%"><br><sub>101540 / 101550 added</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-15b.png" width="100%"><br><sub>Empty-group error fixed, manager recovered</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-16.png" width="100%"><br><sub>101540 level 3 and 101550 level 12 firing</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-17.png" width="100%"><br><sub>New audit rules file</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-18.png" width="100%"><br><sub>Audit rules loaded in the kernel</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-20.png" width="100%"><br><sub>Wazuh alerts: only curl and sudo</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-21.png" width="100%"><br><sub>New test user gets reused UID 1001</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-22.png" width="100%"><br><sub>No active user journal before the first login</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-23.png" width="100%"><br><sub>SSH login from Kali; "Last login" belongs to the old UID</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-24.png" width="100%"><br><sub>Login 13:39:07, journald rotation 13:39:09</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-25.png" width="100%"><br><sub>This time the login reached Wazuh (5715)</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-26.png" width="100%"><br><sub>Endpoint clock: Local CMOS, not synchronized</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-27.png" width="100%"><br><sub>NTP synced to time.windows.com</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-28.png" width="100%"><br><sub>Security log 20 MB to 200 MB</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-29.png" width="100%"><br><sub>After v1 window start</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-32.png" width="100%"><br><sub>101560 added (Edge Run key)</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-33.png" width="100%"><br><sub>101570 / 101580 added</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-35a.png" width="100%"><br><sub>Negative test: test Run key added and removed</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-36.png" width="100%"><br><sub>After v2 window start (after Windows Update)</sub></td>
+<td><img src="screenshots/Exercise-18/EX18-38.png" width="100%"><br><sub>After v2: details of the level 10+ alerts</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/Exercise-18/EX18-40.png" width="100%"><br><sub>100710 regex fixed</sub></td>
+<td></td>
+</tr>
+</table>
+
+</details>
+
+### Key takeaways
+- Tune a pattern, never a rule ID, and prove it twice: a positive test (the noise stops) **and** a negative test (the attack still fires). 100710 passed a negative test for ten exercises while doing nothing.
+- Lowering severity is often better than silencing. A level 3 logon event is still searchable; a level 12 logon event teaches analysts to ignore level 12.
+- Field names and formats come from live alerts: no `signed` field on Sysmon 11, no `parentImage` on 61632, doubled backslashes everywhere, sudo-rs in `/usr/lib/cargo/bin`.
+- Some alerts should never be tuned, only triaged. A Microsoft-signed `PrintConfig.dll` today does not make the next DLL in that folder safe.
+- Alert count is a weak metric. Measure what the high-severity alerts mean, not only how many there are.
+
+---
+
 ## 🎓 What I learned
 
 - **Triage:** reading rule ID, level, source IP and MITRE mapping; deciding true vs false positive from the exact field values
@@ -1845,7 +2112,8 @@ The same four-guess intrusion that first produced level 5–6 alerts for its ent
 - **Detection engineering:** finding detection gaps and closing them with custom Wazuh rules, including correlation rules and multi-condition rules that limit false positives
 - **Knowing when NOT to write a rule:** distinguishing a rule gap (event arrives, no rule matches) from a visibility gap (event never reaches the SIEM), and documenting the gap instead of shipping a rule that can never fire
 - **Rule internals:** Wazuh evaluates rules as a tree (`if_sid` vs `if_group`), the predecoder changes what `<match>` sees, and dashboard field names differ from rule field names
-- **Tuning:** narrow level 0 suppression rules backed by negative tests, so tuning never creates blind spots
+- **Tuning:** narrow level 0 suppression rules and level 3 severity corrections, each backed by a positive and a negative test, and measured over before/after idle windows, so tuning never creates blind spots
+- **Knowing what not to tune:** a rare, high-value alert (a DLL in the print spooler's driver folder) is triaged with a signature check, not silenced
 - **Attack coverage:** persistence (Run keys, scheduled tasks, Startup folder), lateral movement, tool transfer, SSH and RDP brute force, file tampering, and defense evasion (log clearing, disabling tools)
 - **File integrity monitoring:** whodata answers who, what, when and how in a single alert; context (which folder, which file) decides whether a change is noise or an attack
 - **Endpoint health as a detection problem:** losing visibility (agent down, host crashed) is itself an incident; an agent that is "Active" may still be sending nothing
@@ -1861,13 +2129,10 @@ The detailed version, with what happened and what I changed in each case, is in 
 
 ## 🚀 Next steps
 
-- Tune a child of rule 506 to raise "Wazuh agent stopped" to high severity
 - Close the crash/shutdown visibility gap with agent-side bookmark persistence or host/hypervisor-level monitoring
-- Tune rule 92219 noise caused by Windows Update (`C:\Windows\SoftwareDistribution`)
 - Custom Windows active-response script that reads `win.eventdata.ipAddress`, so RDP brute force can be blocked too
-- Confirm the journald-rotation event loss with archives enabled during a burst
-- Discovery-burst rule (`net`, `whoami`, `ipconfig`, `systeminfo` from one user within minutes) and NTP time sync on the endpoint
-- Tune the Exercise 17 noise: 92217 (executables in the Windows folder) and 92213 for the Edge unpacker
-- Tune PowerShell 4104 noise: the Wazuh agent's own SCA scan (91816), the 91823 false positive and Windows maintenance scripts (91820)
+- Fix the journald first-login race for good: one source per log (journald filtered by unit, or auth.log only)
+- Discovery-burst rule (`net`, `whoami`, `ipconfig`, `systeminfo` from one user within minutes)
+- Confirm the still-unverified tuning rules (101520, 101570, the 100710 fix) and investigate 92205 (PowerShell creating executables in the Windows folder)
 - Add the Script Block Logging registry key to the Sysmon config (Event 13) and collect PowerShell 7 (`PowerShell Core/Operational`) logs
-- Next exercises: more detection scenarios, then a web penetration testing lab and a network security lab
+- Next labs: phishing email analysis, a web penetration testing lab, a network security lab, and an Active Directory attack-and-detection lab

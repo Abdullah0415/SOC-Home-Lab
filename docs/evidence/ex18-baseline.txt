@@ -1,0 +1,15 @@
+TOTAL 58 | LEVEL 10+ 1
+   28 92219   L6   Possible DLL search order hijack by C:\\Windows\\SoftwareDis
+    9 60642   L3   Software protection service scheduled successfully.
+    6 80792   L3   Audit: Command: /usr/lib/cargo/bin/coreutils/tee.
+    3 61104   L3   Service startup type was changed
+    2 92052   L4   Windows command prompt started by an abnormal process
+    2 92205   L9   Powershell process created an executable file in Windows roo
+    1 92217   L6   Executable dropped in Windows root folder
+    1 60805   L3   The database engine is starting a new instance.
+    1 60807   L3   The database engine is initiating recovery steps.
+    1 60808   L3   The database engine is replaying log file C:\Winnt\system32\
+    1 60809   L3   The database engine has completed recovery steps.
+    1 60798   L3   The database engine attached a database.
+    1 60702   L5   The VSS service is shutting down due to idle timeout.
+    1 92058   L12  Application Compatibility Database launched

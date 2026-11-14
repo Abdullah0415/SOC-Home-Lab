@@ -1,0 +1,20 @@
+TOTAL 69 | LEVEL 10+ 3
+   10 92205   L9   Powershell process created an executable file in Windows roo
+   10 60608   L4   Summary event of the report's signatures.
+    7 92021   L3   Powershell was used to delete files or directories
+    7 60642   L3   Software protection service scheduled successfully.
+    6 92066   L4   C:\\Windows\\SysWOW64\\SecEdit.exe binary in a suspicious lo
+    5 92217   L6   Executable dropped in Windows root folder
+    4 101580  L3   Tuning: backgroundTaskHost running a Store/Settings app task
+    4 92031   L3   Discovery activity executed
+    4 19009   L3   CIS Microsoft Windows 11 Enterprise Benchmark v3.0.0: Ensure
+    2 61104   L3   Service startup type was changed
+    2 101560  L3   Tuning: Edge registered its own startup-boost Run key (benig
+    1 61638   L12  Sysmon - Suspicious Process - dllhost.exe
+    1 92206   L12  DLL file created by printer spool service, possible malware 
+    1 19012   L5   CIS Microsoft Windows 11 Enterprise Benchmark v3.0.0: Ensure
+    1 61102   L5   Windows System error event
+    1 19005   L9   SCA summary: CIS Microsoft Windows 11 Enterprise Benchmark v
+    1 60702   L5   The VSS service is shutting down due to idle timeout.
+    1 80784   L3   Audit: Watch - Read access: /etc/shadow.
+    1 92058   L12  Application Compatibility Database launched

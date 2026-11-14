@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Triggers** | 506 "Wazuh agent stopped", agent disconnected, or an agent that is Active but sends no Windows events |
+| **Triggers** | 101550 "Wazuh agent stopped" (level 12, raised from built-in 506 in Exercise 18), agent disconnected, or an agent that is Active but sends no Windows events |
 | **MITRE** | T1562.001 Impair Defenses: Disable or Modify Tools, T1529 System Shutdown/Reboot |
 | **Priority** | High: while telemetry is down, nothing on that endpoint can be detected |
 
@@ -13,7 +13,7 @@ Lab finding: events written while the agent is down are **never** forwarded late
 ## First five minutes
 
 - [ ] When did events from the agent stop, and when did they resume?
-- [ ] Was the stop clean (service stopped, rule 506) or a crash / power loss (no event at all)?
+- [ ] Was the stop clean (service stopped, rule 101550) or a crash / power loss (no event at all)?
 - [ ] Is the host reachable on the network?
 
 ## Investigation

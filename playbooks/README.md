@@ -6,11 +6,11 @@ Short, practical checklists for triaging the alerts this lab produces. Each play
 
 | ID | Playbook | Triggered by |
 |---|---|---|
-| PB-01 | [Brute force that succeeded (SSH / RDP)](PB-01-brute-force-success.md) | 100800, 101010, 40112 |
+| PB-01 | [Brute force that succeeded (SSH / RDP)](PB-01-brute-force-success.md) | 100800, 101010, 101020, 40112 |
 | PB-02 | [Persistence on a Windows endpoint](PB-02-persistence.md) | 100100, 100300, 100400, 100910 |
 | PB-03 | [Event log cleared](PB-03-log-cleared.md) | 100930 |
 | PB-04 | [Lateral movement and tool transfer](PB-04-lateral-movement-tool-transfer.md) | 100500, 100600 |
-| PB-05 | [Loss of endpoint telemetry](PB-05-telemetry-loss.md) | 506, missing events from an agent |
+| PB-05 | [Loss of endpoint telemetry](PB-05-telemetry-loss.md) | 101550 (agent stopped, L12), missing events from an agent |
 | PB-06 | [Linux privilege escalation attempt](PB-06-linux-privilege-escalation.md) | 101200, 101210, 101220 |
 | PB-07 | [Suspicious PowerShell](PB-07-suspicious-powershell.md) | 101300, 101310, 101315, 101320, 101330, 92057 |
 | PB-08 | [Confirmed intrusion: brute-force login followed by persistence](PB-08-confirmed-intrusion.md) | 101400 |
@@ -21,3 +21,4 @@ Short, practical checklists for triaging the alerts this lab produces. Each play
 - Pivot on the source IP, the account and the process ID: they tie separate alerts into one attack chain.
 - Before concluding "nothing happened", confirm the log pipeline was working at that time ([PB-05](PB-05-telemetry-loss.md)).
 - In the lab, all containment steps are simulated or performed on lab-only accounts.
+- If an alert turns out to be benign and recurring, tune it with the method in [docs/04-tuning.md](../docs/04-tuning.md): one exact pattern, a positive and a negative test. Never disable the rule.

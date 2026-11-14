@@ -31,6 +31,11 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 | Severity is not priority | The only level 15 alerts in the intrusion were Edge unpacking a DLL; the attacker's entry was level 5–6 | Verify every high alert and look below level 10 around the first sign of an attack | 17 |
 | Group alerts before reading them | 105 alerts in 20 minutes, 68% noise; grouped by rule they became 24 lines | Summarise by rule (first, last, count) before reading one by one | 17 |
 | Measure before trusting the count | 243 script blocks → 22 alerts, 12 of them noise from three known sources | Count by rule and script text after enabling any new log source | 16 |
+| A suppression needs a positive test too | 100710 passed its negative test in Exercise 8 but never matched: one `\\` in an anchored path, while Wazuh stores two | Prove the noise stops **and** the attack still fires; match paths with `\\+` | 18 |
+| Lower severity before silencing | 7 of 8 level 12 alerts in an idle hour were normal logon processes | Level 3 child rules keep the record searchable without training analysts to ignore level 12 | 18 |
+| Some alerts are never tuned | 92206: `spoolsv.exe` wrote a DLL into the printer driver folder; it was Microsoft-signed | Triage rare, high-value alerts (signature check) every time; PrintNightmare uses the same path | 18 |
+| Alert count is a weak metric | After tuning, the idle-hour total rose (58 → 107 → 69) because Windows did different work each hour | Compare the targeted rules and what level 10+ means, not only the total | 18 |
+| Do not touch the system while measuring | One `sudo` check during a measurement window added ~6 alerts | No input on any VM during a window | 18 |
 
 ## Log pipeline and visibility
 
@@ -111,3 +116,12 @@ The practical lessons from the lab, grouped by theme. Each one came from somethi
 - **A regex parent can be wider than it looks.** Built-in 92300 also matches `RunNotification`, written by `sihost.exe` at every logon; the fixed 100300 requires `Run\` or `RunOnce\`.
 - **Hidden windows hide your own console.** `-w hidden` in a classic PowerShell window hid the window that launched it: expected attacker behaviour, not a crash.
 - **The SIEM is the evidence.** The endpoint lost its logs twice (attacker, then rollover); every logon and account change was still in Wazuh.
+
+## Exercise 18: Alert tuning
+- **Build tuning rules from live JSON, never from a guide.** The guide's `signed` field does not exist on Sysmon Event 11, and 61632 has no `parentImage`; both first drafts would never have matched.
+- **Real paths beat expected paths.** sudo-rs is `/usr/lib/cargo/bin/sudo`, `python3` is `python3.14`, `nc` is `nc.openbsd`; auditd path rules do not follow symlinks, so `/usr/bin/sudo` would have removed all sudo visibility.
+- **Check the time window of your own test.** `ausearch -ts recent` means the last 10 minutes, so the first test showed events from before the change.
+- **One passing test does not close an intermittent bug.** The journald first-login loss happened twice and not the third time: a race, so it stays a documented gap with a compensating control (auditd `USER_LOGIN`).
+- **Two log sources for the same data is a noise generator.** Adding `auth.log` next to journald would have fixed one race by doubling every sudo, PAM and CRON alert.
+- **UIDs are reused.** A new user got the deleted user's UID 1001, and SSH showed the old user's "Last login". `lastlog` is per UID, not per account.
+- **Validate before restart, always.** Removing the only rule from a `<group>` left it empty and the manager refused to start; `wazuh-analysisd -t` caught it first.
