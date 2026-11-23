@@ -14,6 +14,7 @@ Short, practical checklists for triaging the alerts this lab produces. Each play
 | PB-06 | [Linux privilege escalation attempt](PB-06-linux-privilege-escalation.md) | 101200, 101210, 101220 |
 | PB-07 | [Suspicious PowerShell](PB-07-suspicious-powershell.md) | 101300, 101310, 101315, 101320, 101330, 92057 |
 | PB-08 | [Confirmed intrusion: brute-force login followed by persistence](PB-08-confirmed-intrusion.md) | 101400 |
+| PB-09 | [Phishing email triage](PB-09-phishing-triage.md) | User-reported suspicious email (full cases: [Phishing-Analysis-Lab](https://github.com/Abdullah0415/Phishing-Analysis-Lab)) |
 
 **General rules for every playbook**
 
